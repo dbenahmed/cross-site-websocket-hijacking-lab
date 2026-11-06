@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Real-Time Chat Application (localhost:3000)</title>
+  <style>
+    /* Simple, clean layout styles for the chat interface */
+    body { font-family: sans-serif; max-width: 720px; margin: 24px auto; padding: 0 16px; background: #f8fafc; color: #1e293b; }
+    .card { background: #fff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 16px; margin-bottom: 16px; }
+    h2, h3 { margin-top: 0; }
+    input, button { padding: 8px 12px; font-size: 14px; border-radius: 4px; border: 1px solid #94a3b8; }
+    button { cursor: pointer; background: #2563eb; color: white; border: none; }
+    button.secondary { background: #475569; }
+    button.mode-btn { margin-right: 6px; margin-bottom: 6px; background: #e2e8f0; color: #1e293b; }
+    button.mode-btn.active { background: #16a34a; color: white; font-weight: bold; }
+    #messages { height: 240px; overflow-y: auto; border: 1px solid #e2e8f0; padding: 10px; background: #f1f5f9; margin-bottom: 10px; border-radius: 4px; }
+    .msg { margin-bottom: 6px; font-size: 14px; }
+    .meta { color: #64748b; font-size: 12px; }
+    .hidden { display: none; }
+    .status { font-size: 13px; padding: 6px 10px; border-radius: 4px; background: #e0f2fe; color: #0369a1; margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+  <h2>Real-Time Chat (http://localhost:3000)</h2>
+
+  <!-- Card 1: Control buttons to switch the backend defense mode live during demos -->
+  <div class="card">
+    <h3>Server Defense Mode</h3>
+    <p class="meta">Switch modes live and reconnect to test different defenses:</p>
+    <div id="modeButtons">
+      <button class="mode-btn" data-mode="vulnerable">1. Vulnerable (Cookie Only)</button>
+      <button class="mode-btn" data-mode="origin">2. Origin Validation</button>
+      <button class="mode-btn" data-mode="ticket">3. One-Time Ticket</button>
+      <button class="mode-btn" data-mode="both">4. Both (Origin + Ticket)</button>
+    </div>
+    <div id="modeStatus" class="status">Active Mode: loading...</div>
+  </div>
+
+  <!-- Card 2: Login form that sends credentials to POST /api/login to receive the JWT session cookie -->
+  <div id="loginCard" class="card">
+    <h3>Login</h3>
+    <p class="meta">Demo Accounts: <code>alice@example.com</code> or <code>bob@example.com</code> (Password: <code>password123</code>)</p>
+    <input id="email" type="email" value="alice@example.com" placeholder="Email" />
+    <input id="password" type="password" value="password123" placeholder="Password" />
+    <button id="loginBtn">Login</button>
+    <div id="loginError" style="color: #dc2626; margin-top: 8px;"></div>
+  </div>
+
+  <!-- Card 3: Live WebSocket Chat UI (shown after logging in) -->
+  <div id="chatCard" class="card hidden">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+      <strong id="userInfo"></strong>
+      <div>
+        <button id="reconnectBtn" class="secondary">Reconnect WS</button>
+        <button id="logoutBtn" class="secondary">Logout</button>
+      </div>
+    </div>
+    <div id="wsStatus" class="status">WebSocket: Disconnected</div>
+    <div id="messages"></div>
+    <div style="display: flex; gap: 8px;">
+      <input id="msgInput" type="text" style="flex: 1;" placeholder="Type a message..." />
+      <button id="sendBtn">Send</button>
+    </div>
+  </div>
+
+  <script>
+    // Track the currently logged-in user object
+    let currentUser = null;
+    // Track the server's active security mode ('vulnerable' | 'origin' | 'ticket' | 'both')
+    let currentMode = 'vulnerable';
+    // Hold a reference to the active browser WebSocket instance
+    let ws = null;
+
+    // Cache DOM elements for updating status text and message list
+    const modeStatusEl = document.getElementById('modeStatus');
+    const wsStatusEl = document.getElementById('wsStatus');
+    const messagesEl = document.getElementById('messages');
+    const loginCard = document.getElementById('loginCard');
+    const chatCard = document.getElementById('chatCard');
+
+    // Update the highlighted defense mode button in the UI
+    function updateModeUI(mode) {
+      currentMode = mode;
+      modeStatusEl.textContent = `Active Server Defense Mode: ${mode.toUpperCase()}`;
+      document.querySelectorAll('.mode-btn').forEach((btn) => {
+        btn.classList.toggle('active', btn.dataset.mode === mode);
+      });
+    }
+
+    // Safely render a single chat message row inside the #messages container
+    function appendMessage(entry) {
+      const div = document.createElement('div');
+      div.className = 'msg';
+      div.innerHTML = `<span class="meta">[${entry.timestamp}]</span> <strong>${entry.sender}:</strong> `;
+      // Use textContent for the message body to prevent HTML/XSS injection
+      const textSpan = document.createElement('span');
+      textSpan.textContent = entry.text;
+      div.appendChild(textSpan);
+      messagesEl.appendChild(div);
+      // Auto-scroll to the newest message at the bottom
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    // Open a WebSocket connection to the server, requesting a one-time ticket first if Ticket Mode is active
+    async function connectWebSocket() {
+      // Close any existing WebSocket connection before opening a new one
+      if (ws) {
+        ws.close();
+      }
+
+      // Build the base WebSocket URL pointing to the current host (ws://localhost:3000/chat)
+      let wsUrl = `ws://${window.location.host}/chat`;
+
+      // If the server requires a One-Time Ticket ('ticket' or 'both' mode), request one via HTTP POST first
+      if (currentMode === 'ticket' || currentMode === 'both') {
+        wsStatusEl.textContent = 'WebSocket: Requesting single-use ticket via POST /api/ws-ticket...';
+        // Because this page runs on the SAME origin (http://localhost:3000), the browser allows reading the response
+        const res = await fetch('/api/ws-ticket', { method: 'POST' });
+        if (!res.ok) {
+          wsStatusEl.textContent = 'WebSocket: Failed to obtain ticket';
+          return;
+        }
+        // Extract the UUID ticket from the JSON response and append it to the WebSocket query string
+        const data = await res.json();
+        wsUrl += `?ticket=${encodeURIComponent(data.ticket)}`;
+      }
+
+      // Initiate the WebSocket handshake with the server
+      ws = new WebSocket(wsUrl);
+
+      // Fired when the server accepts the upgrade (101 Switching Protocols)
+      ws.onopen = () => {
+        wsStatusEl.textContent = `WebSocket: Connected (${wsUrl})`;
+      };
+
+      // Fired whenever the server sends a JSON packet (initial history or a live chat message)
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'init') {
+          // Clear old messages and render the message history received from the server
+          messagesEl.innerHTML = '';
+          msg.history.forEach(appendMessage);
+        } else if (msg.type === 'message') {
+          // Append the newly broadcast live chat message
+          appendMessage(msg.data);
+        }
+      };
+
+      // Fired when the WebSocket connection is closed or rejected by the server
+      ws.onclose = () => {
+        wsStatusEl.textContent = 'WebSocket: Closed';
+      };
+    }
+
+    // On page load, check if the browser already has a valid session_token cookie
+    async function checkSession() {
+      const res = await fetch('/api/me');
+      const data = await res.json();
+      updateModeUI(data.mode);
+      if (data.user) {
+        currentUser = data.user;
+        document.getElementById('userInfo').textContent = `Logged in as ${currentUser.name} (${currentUser.email})`;
+        loginCard.classList.add('hidden');
+        chatCard.classList.remove('hidden');
+        connectWebSocket();
+      }
+    }
+
+    // Attach click listeners to each defense mode button so the mode can be switched live
+    document.querySelectorAll('.mode-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const res = await fetch('/api/mode', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: btn.dataset.mode })
+        });
+        const data = await res.json();
+        updateModeUI(data.mode);
+        // Reconnect the WebSocket automatically to demonstrate the new mode working for the legitimate client
+        if (currentUser) {
+          connectWebSocket();
+        }
+      });
+    });
+
+    // Handle the Login button click
+    document.getElementById('loginBtn').addEventListener('click', async () => {
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      // Send credentials to POST /api/login; the browser automatically stores the returned Set-Cookie header
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        document.getElementById('loginError').textContent = data.error;
+        return;
+      }
+      document.getElementById('loginError').textContent = '';
+      currentUser = data.user;
+      document.getElementById('userInfo').textContent = `Logged in as ${currentUser.name} (${currentUser.email})`;
+      loginCard.classList.add('hidden');
+      chatCard.classList.remove('hidden');
+      // Connect to the real-time chat WebSocket after login
+      connectWebSocket();
+    });
+
+    // Handle the Logout button click
+    document.getElementById('logoutBtn').addEventListener('click', async () => {
+      await fetch('/api/logout', { method: 'POST' });
+      if (ws) ws.close();
+      currentUser = null;
+      chatCard.classList.add('hidden');
+      loginCard.classList.remove('hidden');
+    });
+
+    // Allow manual reconnection to see fresh ticket generation
+    document.getElementById('reconnectBtn').addEventListener('click', connectWebSocket);
+
+    // Send a chat message over the open WebSocket connection
+    document.getElementById('sendBtn').addEventListener('click', () => {
+      const input = document.getElementById('msgInput');
+      if (ws && ws.readyState === WebSocket.OPEN && input.value.trim()) {
+        ws.send(JSON.stringify({ text: input.value.trim() }));
+        input.value = '';
+      }
+    });
+
+    // Check existing login session when the page first loads
+    checkSession();
+  </script>
+</body>
+</html>

@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Cross-Origin WebSocket Diagnostic Client (localhost:5000)</title>
+  <style>
+    /* Styling with an orange theme to visually distinguish the external origin (port 5000) from the chat app (port 3000) */
+    body { font-family: sans-serif; max-width: 720px; margin: 24px auto; padding: 0 16px; background: #fff7ed; color: #1e293b; }
+    .card { background: #fff; border: 1px solid #fed7aa; border-radius: 6px; padding: 16px; margin-bottom: 16px; }
+    h2, h3 { margin-top: 0; }
+    input, button { padding: 8px 12px; font-size: 14px; border-radius: 4px; border: 1px solid #94a3b8; }
+    button { cursor: pointer; background: #ea580c; color: white; border: none; margin-right: 6px; }
+    button.secondary { background: #475569; }
+    #log { height: 260px; overflow-y: auto; border: 1px solid #cbd5e1; padding: 10px; background: #0f172a; color: #e2e8f0; font-family: monospace; font-size: 13px; border-radius: 4px; }
+    .log-entry { margin-bottom: 6px; }
+    .ok { color: #4ade80; }
+    .err { color: #f87171; }
+    .info { color: #38bdf8; }
+  </style>
+</head>
+<body>
+  <h2>Cross-Origin Diagnostic Client (http://localhost:5000)</h2>
+
+  <!-- Card 1: Controls to test Cross-Origin WebSocket Handshake and Same-Origin Policy (SOP) on /api/ws-ticket -->
+  <div class="card">
+    <h3>Target WebSocket Endpoint</h3>
+    <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+      <input id="targetHost" type="text" value="localhost:3000" style="flex: 1;" />
+    </div>
+    <div>
+      <button id="testWsBtn">1. Test Cross-Origin WS Handshake</button>
+      <button id="testTicketFetchBtn" class="secondary">2. Test Cross-Origin Ticket Fetch (SOP Test)</button>
+      <button id="clearBtn" class="secondary">Clear Log</button>
+    </div>
+  </div>
+
+  <!-- Card 2: Diagnostic console output showing handshake results -->
+  <div class="card">
+    <h3>Diagnostic Log</h3>
+    <div id="log"></div>
+  </div>
+
+  <script>
+    // Reference to the diagnostic WebSocket instance
+    let testSocket = null;
+    // Reference to the on-screen diagnostic log container
+    const logEl = document.getElementById('log');
+
+    // Helper function to append a timestamped line to the diagnostic console
+    function writeLog(text, cls = 'info') {
+      const div = document.createElement('div');
+      div.className = `log-entry ${cls}`;
+      div.textContent = `[${new Date().toLocaleTimeString()}] ${text}`;
+      logEl.appendChild(div);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    // Button 1: Initiate a cross-origin WebSocket connection from http://localhost:5000 to ws://localhost:3000/chat
+    document.getElementById('testWsBtn').addEventListener('click', () => {
+      // Close any previous test socket before starting a new handshake test
+      if (testSocket) {
+        testSocket.close();
+      }
+
+      // Read the target host:port from the input box (defaults to localhost:3000)
+      const host = document.getElementById('targetHost').value.trim();
+      const wsUrl = `ws://${host}/chat`;
+      writeLog(`Initiating cross-origin WebSocket from Origin "${window.location.origin}" -> ${wsUrl}`, 'info');
+
+      // Open the WebSocket connection; the browser automatically attaches any cookies scoped to the target host
+      // and automatically sets the HTTP header: Origin: http://localhost:5000
+      testSocket = new WebSocket(wsUrl);
+
+      // Fired ONLY if the server accepts the cross-origin upgrade (Vulnerable Mode)
+      testSocket.onopen = () => {
+        writeLog('HANDSHAKE ACCEPTED (101 Switching Protocols): Server accepted cross-origin connection.', 'ok');
+      };
+
+      // Fired when data frames arrive over an accepted connection
+      testSocket.onmessage = (event) => {
+        const parsed = JSON.parse(event.data);
+        if (parsed.type === 'init') {
+          writeLog(`Authenticated session bound to user: ${parsed.user.name} (${parsed.user.email}) | Server mode: ${parsed.mode}`, 'ok');
+        } else if (parsed.type === 'message') {
+          writeLog(`Stream event received from [${parsed.data.sender}]: ${parsed.data.text}`, 'info');
+        }
+      };
+
+      // Fired when the server rejects the handshake (e.g., 403 Forbidden due to Origin Validation or Missing Ticket)
+      testSocket.onerror = () => {
+        writeLog('WebSocket error occurred during handshake.', 'err');
+      };
+
+      // Fired when the connection is closed or rejected by the server
+      testSocket.onclose = (event) => {
+        writeLog(`WebSocket closed (code: ${event.code}) — Connection rejected or terminated by server.`, 'err');
+      };
+    });
+
+    // Button 2: Demonstrate why an external origin cannot fetch a One-Time Ticket from POST /api/ws-ticket
+    document.getElementById('testTicketFetchBtn').addEventListener('click', async () => {
+      const host = document.getElementById('targetHost').value.trim();
+      const ticketUrl = `http://${host}/api/ws-ticket`;
+      writeLog(`Attempting cross-origin POST ${ticketUrl} with credentials...`, 'info');
+
+      try {
+        // Attempt a cross-origin fetch() with credentials: 'include'
+        // Even though the browser sends the cookie, the browser's Same-Origin Policy (SOP / CORS)
+        // blocks JavaScript on port 5000 from reading the response from port 3000!
+        const res = await fetch(ticketUrl, {
+          method: 'POST',
+          credentials: 'include'
+        });
+        const data = await res.json();
+        writeLog(`Unexpectedly read ticket: ${JSON.stringify(data)}`, 'err');
+      } catch (err) {
+        writeLog(`BLOCKED BY SAME-ORIGIN POLICY (CORS): External origin cannot read /api/ws-ticket response (${err.message}).`, 'ok');
+      }
+    });
+
+    // Button 3: Clear the diagnostic log
+    document.getElementById('clearBtn').addEventListener('click', () => {
+      logEl.innerHTML = '';
+    });
+  </script>
+</body>
+</html>
