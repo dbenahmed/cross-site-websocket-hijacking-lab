@@ -247,6 +247,7 @@ Yes, in **two major ways**:
 ```text
 cross-site-websocket-eavedropping/
 ├── README.md                              # Complete project documentation & visual mindmap (this file)
+├── USER_GUIDE.md                          # Step-by-step usage guide & all VM/browser adjustments explained
 ├── visual-mindmap.html                    # Interactive visual cheat-sheet (open in any browser!)
 ├── SECURITY_CONCEPTS_AND_MINDMAP.md       # Quick revision notes
 ├── BEYOND_COOKIES_BASIC_AUTH_AND_NTLM.md  # Deep-dive: HTTP Basic Auth, Windows NTLM/Kerberos & Localhost CSWSH
