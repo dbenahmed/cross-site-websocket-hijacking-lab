@@ -12,7 +12,7 @@ const cookieParser = require('cookie-parser');
 const jwt = require('jsonwebtoken');
 // Native Node.js WebSocket library; note that 'ws' does NOT check the Origin header by default
 const { WebSocketServer } = require('ws');
-// Load our server configuration (ports, allowed origins, ticket expiration, etc.)
+// Load our server configuration (ports, allowed origins, ticket expiration, DEFENSE_MODE, etc.)
 const config = require('./config');
 
 // Create the Express application instance for handling HTTP requests
@@ -22,20 +22,18 @@ const server = http.createServer(app);
 // Initialize WebSocketServer with { noServer: true } so we control the HTTP-to-WebSocket upgrade handshake manually
 const wss = new WebSocketServer({ noServer: true });
 
-// Enable Express to parse JSON request bodies (used by POST /api/login and POST /api/mode)
+// Enable Express to parse JSON request bodies (used by POST /api/login)
 app.use(express.json());
 // Enable Express to parse incoming cookies into req.cookies on standard HTTP requests
 app.use(cookieParser());
 // Serve the frontend chat interface (public/index.html) when a user visits http://localhost:3000
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Track the currently active defense mode in memory so it can be toggled live during demonstrations
-let defenseMode = config.INITIAL_MODE;
-// List of allowed defense mode values:
-// 1. 'vulnerable' = Cookie only (no Origin check, no Ticket check)
-// 2. 'origin'     = Origin header validation + Cookie check
-// 3. 'both'       = Origin header validation + Single-Use Ephemeral Ticket check
-const VALID_MODES = ['vulnerable', 'origin', 'both'];
+// Read the active defense mode from config (.env):
+// - 'vulnerable' = Cookie only (no Origin check, no Ticket check)
+// - 'origin'     = Origin header validation + Cookie check
+// - 'both'       = Origin header validation + Single-Use Ephemeral Ticket check
+const defenseMode = config.DEFENSE_MODE;
 
 // Demo password loaded from environment or defaulted for lab testing
 const DEMO_PASSWORD = process.env.DEMO_PASSWORD || 'password123';
@@ -51,6 +49,11 @@ const tickets = new Map();
 const messageHistory = [
   { sender: 'System', text: 'Welcome to the real-time chat server.', timestamp: new Date().toLocaleTimeString() }
 ];
+
+// Helper function to print timestamped console logs in the server terminal
+function logServer(category, message) {
+  console.log(`[${new Date().toLocaleTimeString()}] [${category}] ${message}`);
+}
 
 // Helper function to parse the raw 'Cookie' HTTP header during a WebSocket 'upgrade' request
 // (Express middleware like cookie-parser does not run automatically on raw HTTP upgrade requests)
@@ -92,8 +95,9 @@ app.post('/api/login', (req, res) => {
   // Look up matching user in our in-memory user list
   const user = users.find((u) => u.email === email && u.password === password);
 
-  // If credentials do not match, return 401 Unauthorized
+  // If credentials do not match, log and return 401 Unauthorized
   if (!user) {
+    logServer('AUTH', `Failed login attempt for email: ${email || 'unknown'}`);
     return res.status(401).json({ error: 'Invalid email or password' });
   }
 
@@ -102,14 +106,16 @@ app.post('/api/login', (req, res) => {
   // Sign the JWT so it expires in 2 hours
   const token = jwt.sign(payload, config.JWT_SECRET, { expiresIn: '2h' });
 
-  // Attach the JWT as an HTTP-only cookie with SameSite=None so it is sent across different domains/IPs
-  // secure: true is required by modern browsers whenever sameSite is set to 'None'
+  // Attach the JWT as an HTTP-only cookie
+  // Note: On plain HTTP in Kali Firefox, set network.cookie.sameSite.noneRequiresSecure = false in about:config
   res.cookie(config.COOKIE_NAME, token, {
     httpOnly: true,
     sameSite: 'None',
-    secure: true,
+    secure: false,
     maxAge: 2 * 60 * 60 * 1000
   });
+
+  logServer('AUTH', `User logged in: ${user.name} (${user.email}) | Set-Cookie: ${config.COOKIE_NAME} (HttpOnly, SameSite=None)`);
 
   // Return the logged-in user details and current server defense mode to the frontend
   res.json({ user: payload, mode: defenseMode });
@@ -117,8 +123,10 @@ app.post('/api/login', (req, res) => {
 
 // HTTP Route: Log out the current user by deleting the session cookie
 app.post('/api/logout', (req, res) => {
+  const user = getUserFromToken(req.cookies[config.COOKIE_NAME]);
   // Instruct the browser to clear the session_token cookie
   res.clearCookie(config.COOKIE_NAME);
+  logServer('AUTH', `User logged out: ${user ? user.email : 'unknown'}`);
   // Respond with success
   res.json({ ok: true });
 });
@@ -127,32 +135,20 @@ app.post('/api/logout', (req, res) => {
 app.get('/api/me', (req, res) => {
   // Read the session_token cookie from req.cookies and verify the JWT
   const user = getUserFromToken(req.cookies[config.COOKIE_NAME]);
-  // Return the user object (or null) and active defense mode
+  // Return the user object (or null) and active defense mode configured in .env
   res.json({ user, mode: defenseMode });
-});
-
-// HTTP Route: Switch the active server defense mode at runtime (for live demonstration)
-app.post('/api/mode', (req, res) => {
-  // Extract the requested mode from the JSON body
-  const { mode } = req.body;
-  // Reject unknown mode names
-  if (!VALID_MODES.includes(mode)) {
-    return res.status(400).json({ error: 'Invalid mode' });
-  }
-  // Update the server's active defense mode
-  defenseMode = mode;
-  // Return the newly active defense mode
-  res.json({ mode: defenseMode });
 });
 
 // HTTP Route (Defense 2): Generate a short-lived (15s), single-use ticket for WebSocket connection
 // Because this is a standard HTTP POST endpoint without permissive CORS headers, the browser's
 // Same-Origin Policy (SOP) blocks external origins (like localhost:5000) from reading this response!
 app.post('/api/ws-ticket', (req, res) => {
+  const origin = req.headers.origin || 'unknown';
   // Verify the caller is logged in by checking their JWT session cookie
   const user = getUserFromToken(req.cookies[config.COOKIE_NAME]);
   // Reject unauthenticated callers with 401 Unauthorized
   if (!user) {
+    logServer('TICKET', `REJECTED ticket request from Origin "${origin}" -> No valid session cookie attached`);
     return res.status(401).json({ error: 'Authentication required' });
   }
 
@@ -164,12 +160,15 @@ app.post('/api/ws-ticket', (req, res) => {
     expiresAt: Date.now() + config.TICKET_TTL_MS
   });
 
+  logServer('TICKET', `Issued 15s single-use ticket for ${user.email} | Request Origin: "${origin}" (Note: Browser SOP blocks untrusted origins from reading this response)`);
+
   // Send the ticket back to the same-origin frontend so it can connect to ws://.../chat?ticket=<uuid>
   res.json({ ticket, expiresInSeconds: config.TICKET_TTL_MS / 1000 });
 });
 
 // Helper function to immediately terminate an unauthorized HTTP-to-WebSocket upgrade request
 function rejectUpgrade(socket, statusCode, message) {
+  logServer('WS-REJECT', `HTTP ${statusCode} ${message}`);
   // Write a raw HTTP error response directly to the underlying TCP socket
   socket.write(`HTTP/1.1 ${statusCode} ${message}\r\nConnection: close\r\n\r\n`);
   // Close and destroy the TCP socket so the WebSocket handshake cannot proceed
@@ -180,24 +179,33 @@ function rejectUpgrade(socket, statusCode, message) {
 server.on('upgrade', (req, socket, head) => {
   // Parse the incoming request URL so we can inspect the path (/chat) and query parameters (?ticket=...)
   const requestUrl = new URL(req.url, `http://${req.headers.host}`);
+  const origin = req.headers.origin || 'missing';
+  const cookies = parseCookies(req.headers.cookie);
+  const hasSessionCookie = Boolean(cookies[config.COOKIE_NAME]);
+  const hasTicketParam = requestUrl.searchParams.has('ticket');
+
+  logServer(
+    'WS-UPGRADE',
+    `Incoming WebSocket handshake | Origin: "${origin}" | Mode: ${defenseMode.toUpperCase()} | Cookie Attached: ${hasSessionCookie ? 'YES' : 'NO'} | Ticket Param: ${hasTicketParam ? 'YES' : 'NO'}`
+  );
 
   // Only allow WebSocket upgrades on the '/chat' path
   if (requestUrl.pathname !== '/chat') {
     return rejectUpgrade(socket, 404, 'Not Found');
   }
 
-  // Determine which security checks are enabled based on the current defenseMode
+  // Determine which security checks are enabled based on DEFENSE_MODE in .env
   const requiresOriginCheck = defenseMode === 'origin' || defenseMode === 'both';
   const requiresTicketCheck = defenseMode === 'both';
 
   // --- DEFENSE 1: ORIGIN VALIDATION ---
   if (requiresOriginCheck) {
-    // Read the Origin header automatically attached by the browser to the WebSocket handshake
-    const origin = req.headers.origin;
     // If the Origin header is missing or is not in our ALLOWED_ORIGINS list, reject with 403 Forbidden
-    if (!origin || !config.ALLOWED_ORIGINS.includes(origin)) {
+    if (!req.headers.origin || !config.ALLOWED_ORIGINS.includes(req.headers.origin)) {
+      logServer('DEFENSE-ORIGIN', `BLOCKED! Origin "${origin}" is not in ALLOWED_ORIGINS: [${config.ALLOWED_ORIGINS.join(', ')}]`);
       return rejectUpgrade(socket, 403, 'Forbidden: Untrusted Origin');
     }
+    logServer('DEFENSE-ORIGIN', `PASSED! Origin "${origin}" matches ALLOWED_ORIGINS.`);
   }
 
   // Variable to hold the authenticated user identity for this WebSocket connection
@@ -217,28 +225,31 @@ server.on('upgrade', (req, socket, head) => {
 
     // If the ticket did not exist or has passed its 15-second expiration time, reject with 403 Forbidden
     if (!record || Date.now() > record.expiresAt) {
+      logServer('DEFENSE-TICKET', 'BLOCKED! Missing, invalid, or expired single-use ticket.');
       return rejectUpgrade(socket, 403, 'Forbidden: Invalid or Expired Ticket');
     }
 
+    logServer('DEFENSE-TICKET', `PASSED! Single-use ticket verified and burned for user: ${record.user.email}`);
     // Bind the WebSocket connection to the user who requested the ticket
     authenticatedUser = record.user;
   } else {
     // --- VULNERABLE / AMBIENT COOKIE AUTHENTICATION ---
     // When ticket defense is off, authenticate using the browser's automatically attached Cookie header
-    const cookies = parseCookies(req.headers.cookie);
-    // Verify the JWT inside the session_token cookie
     authenticatedUser = getUserFromToken(cookies[config.COOKIE_NAME]);
 
     // If no valid session cookie is present, reject the handshake with 401 Unauthorized
     if (!authenticatedUser) {
+      logServer('AUTH-COOKIE', 'BLOCKED! Browser did not attach a valid session_token cookie (check SameSite / login state).');
       return rejectUpgrade(socket, 401, 'Unauthorized: Missing or Invalid Cookie');
     }
+    logServer('AUTH-COOKIE', `Authenticated via ambient cookie as: ${authenticatedUser.name} (${authenticatedUser.email})`);
   }
 
   // All enabled checks passed: complete the WebSocket handshake (101 Switching Protocols)
   wss.handleUpgrade(req, socket, head, (ws) => {
     // Attach the authenticated user's profile to the WebSocket instance
     ws.user = authenticatedUser;
+    logServer('WS-OPEN', `101 Switching Protocols -> Connection established for ${authenticatedUser.email} from Origin "${origin}"`);
     // Emit the 'connection' event so our message handler below takes over
     wss.emit('connection', ws, req);
   });
@@ -246,11 +257,13 @@ server.on('upgrade', (req, socket, head) => {
 
 // Handle active WebSocket connections after the upgrade handshake has succeeded
 wss.on('connection', (ws, req) => {
+  const origin = req.headers.origin || 'unknown';
+
   // Send an initial welcome packet containing the user profile, origin, active mode, and chat history
   ws.send(JSON.stringify({
     type: 'init',
     user: ws.user,
-    origin: req.headers.origin || 'unknown',
+    origin,
     mode: defenseMode,
     history: messageHistory
   }));
@@ -276,6 +289,8 @@ wss.on('connection', (ws, req) => {
       timestamp: new Date().toLocaleTimeString()
     };
 
+    logServer('CHAT-MSG', `Message from ${ws.user.name} (${ws.user.email}) [Origin: ${origin}]: "${entry.text}" -> Broadcasting to ${wss.clients.size} client(s)`);
+
     // Store the message in memory (keeping the most recent 50 messages)
     messageHistory.push(entry);
     if (messageHistory.length > 50) {
@@ -291,9 +306,15 @@ wss.on('connection', (ws, req) => {
       }
     });
   });
+
+  ws.on('close', () => {
+    logServer('WS-CLOSE', `Connection closed for ${ws.user.email} (Origin: "${origin}")`);
+  });
 });
 
 // Start the HTTP + WebSocket server on the configured host and port
 server.listen(config.PORT, config.HOST, () => {
-  console.log(`Chat Server listening on http://localhost:${config.PORT} (mode: ${defenseMode})`);
+  logServer('STARTUP', `Chat Server listening on http://${config.HOST}:${config.PORT}`);
+  logServer('STARTUP', `Active Defense Mode (.env DEFENSE_MODE): ${defenseMode.toUpperCase()}`);
+  logServer('STARTUP', `Allowed Origins: [${config.ALLOWED_ORIGINS.join(', ')}]`);
 });

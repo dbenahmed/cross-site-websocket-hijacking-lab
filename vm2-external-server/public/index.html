@@ -25,7 +25,7 @@
   <div class="card">
     <h3>Target WebSocket Endpoint</h3>
     <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-      <input id="targetHost" type="text" value="localhost:3000" style="flex: 1;" />
+      <input id="targetHost" type="text" value="192.168.28.131:3000" style="flex: 1;" />
     </div>
     <div>
       <button id="testWsBtn">1. Test Cross-Origin WS Handshake</button>
@@ -46,13 +46,23 @@
     // Reference to the on-screen diagnostic log container
     const logEl = document.getElementById('log');
 
-    // Helper function to append a timestamped line to the diagnostic console
+    // Helper function to append a timestamped line to the UI console, browser DevTools console, AND the VM2 server terminal
     function writeLog(text, cls = 'info') {
       const div = document.createElement('div');
       div.className = `log-entry ${cls}`;
       div.textContent = `[${new Date().toLocaleTimeString()}] ${text}`;
       logEl.appendChild(div);
       logEl.scrollTop = logEl.scrollHeight;
+
+      // Also print to the browser DevTools console
+      console.log(`[External-Diagnostic] ${text}`);
+
+      // Also send the event to the VM2 server terminal (/api/log) so the terminal window displays live activity
+      fetch('/api/log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ level: cls.toUpperCase(), message: text })
+      }).catch(() => {});
     }
 
     // Button 1: Initiate a cross-origin WebSocket connection from http://localhost:5000 to ws://localhost:3000/chat
@@ -62,7 +72,7 @@
         testSocket.close();
       }
 
-      // Read the target host:port from the input box (defaults to localhost:3000)
+      // Read the target host:port from the input box (defaults to 192.168.28.131:3000)
       const host = document.getElementById('targetHost').value.trim();
       const wsUrl = `ws://${host}/chat`;
       writeLog(`Initiating cross-origin WebSocket from Origin "${window.location.origin}" -> ${wsUrl}`, 'info');

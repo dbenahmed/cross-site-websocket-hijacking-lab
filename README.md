@@ -7,6 +7,29 @@ This guide is written so that **anyone visiting this repository for the first ti
 
 ---
 
+> [!IMPORTANT]
+> ### Crucial Lab Note: `SameSite=None`, `secure: false`, and Browser Settings for Plain HTTP VM Testing
+>
+> When testing across **two different Virtual Machine IP addresses** over plain HTTP (for example, `http://192.168.28.131:3000` and `http://192.168.28.132:5000` without SSL/HTTPS certificates):
+>
+> 1. **What `SameSite=None` does:**
+>    Because two raw IP addresses (`192.168.28.131` and `192.168.28.132`) have no shared domain name, the browser treats them as **two completely different websites (Cross-Site)**. For the browser to attach the login cookie across two different sites/IPs, the cookie must use `sameSite: 'None'`.
+> 2. **What `secure: true` vs `secure: false` does:**
+>    - **`secure: true`** tells the browser: *"ONLY save and send this cookie over encrypted `https://` (or `wss://`) connections!"* (with a built-in exception for `http://localhost`). If you set `secure: true` while visiting a plain HTTP IP address like `http://192.168.28.131:3000`, the browser **refuses to save the cookie at all**, and even normal login breaks!
+>    - **`secure: false`** allows the browser to save and send the cookie over plain **`http://`** and **`ws://`** in a local VM lab without needing HTTPS certificates.
+> 3. **Required One-Time Browser Setting for Plain HTTP VM Lab:**
+>    By default, modern browsers block `SameSite=None` unless `secure: true` (`https://`) is used. To allow `SameSite=None` with `secure: false` over plain `http://192.168.x.x` in your VM browser:
+>    - **In Firefox (e.g., Kali Linux / Ubuntu VM):**
+>      1. Open a new tab and go to **`about:config`** (click *Accept the Risk and Continue*).
+>      2. Search for **`network.cookie.sameSite.noneRequiresSecure`**.
+>      3. Double-click it to set it to **`false`**.
+>    - **In Chrome / Chromium / Edge / Brave:**
+>      1. Open **`chrome://flags/#unsafely-treat-insecure-origin-as-secure`**.
+>      2. Enter your Chat Server URL (e.g. `http://192.168.28.131:3000`), set to **Enabled**, and relaunch.
+>    - *(Note: If you run both servers on the same machine via `http://localhost:3000` and `http://localhost:5000`, no browser setting change is needed because `localhost` is already treated as Same-Site and Secure by default.)*
+
+---
+
 ## 1. The Big Picture: What Is the Problem? (Explained Simply)
 
 Modern web apps (live chats, financial dashboards, collaborative editors) use **WebSockets** (`ws://` or `wss://`) instead of normal HTTP requests (`fetch`) so the server can push live messages to the browser instantly.

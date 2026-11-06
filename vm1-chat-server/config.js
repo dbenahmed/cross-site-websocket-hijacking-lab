@@ -37,6 +37,6 @@ module.exports = {
   // Lifetime of a single-use WebSocket ticket in milliseconds (15 seconds = 15000 ms)
   TICKET_TTL_MS: Number(process.env.TICKET_TTL_MS) || 15 * 1000,
 
-  // Default security mode when the server starts ('vulnerable' | 'origin' | 'both')
-  INITIAL_MODE: process.env.DEFENSE_MODE || 'vulnerable'
+  // Active security mode configured via .env ('vulnerable' | 'origin' | 'both')
+  DEFENSE_MODE: process.env.DEFENSE_MODE || 'vulnerable'
 };
