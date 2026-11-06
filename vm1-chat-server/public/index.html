@@ -29,8 +29,9 @@
     <p class="meta">Switch modes live and reconnect to test different defenses:</p>
     <div id="modeButtons">
       <button class="mode-btn" data-mode="vulnerable">1. Vulnerable (Cookie Only)</button>
-      <button class="mode-btn" data-mode="origin">2. Origin Validation</button>
-      <button class="mode-btn" data-mode="both">3. Origin + One-Time Ticket</button>
+      <button class="mode-btn" data-mode="origin">2. Origin Validation Only</button>
+      <button class="mode-btn" data-mode="ticket">3. One-Time Ticket Only</button>
+      <button class="mode-btn" data-mode="both">4. Both (Origin + Ticket)</button>
     </div>
     <div id="modeStatus" class="status">Active Mode: loading...</div>
   </div>
@@ -111,8 +112,8 @@
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       let wsUrl = `${wsProtocol}//${window.location.host}/chat`;
 
-      // If the server is in 'both' mode (Origin + One-Time Ticket), request a ticket via HTTP POST first
-      if (currentMode === 'both') {
+      // If the server requires a One-Time Ticket ('ticket' or 'both' mode), request a ticket via HTTP POST first
+      if (currentMode === 'ticket' || currentMode === 'both') {
         wsStatusEl.textContent = 'WebSocket: Requesting single-use ticket via POST /api/ws-ticket...';
         console.log('[Chat-Client] Requesting single-use ticket via POST /api/ws-ticket...');
         // Because this page runs on the SAME origin, the browser allows reading the response

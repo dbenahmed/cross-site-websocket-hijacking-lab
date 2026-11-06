@@ -54,8 +54,9 @@ let defenseMode = config.DEFENSE_MODE;
 // List of allowed defense mode values:
 // 1. 'vulnerable' = Cookie only (no Origin check, no Ticket check)
 // 2. 'origin'     = Origin header validation + Cookie check
-// 3. 'both'       = Origin header validation + Single-Use Ephemeral Ticket check
-const VALID_MODES = ['vulnerable', 'origin', 'both'];
+// 3. 'ticket'     = Single-Use Ephemeral Ticket check only (no Origin check, no Cookie check on WS)
+// 4. 'both'       = Origin header validation + Single-Use Ephemeral Ticket check
+const VALID_MODES = ['vulnerable', 'origin', 'ticket', 'both'];
 
 // Demo password loaded from environment or defaulted for lab testing
 const DEMO_PASSWORD = process.env.DEMO_PASSWORD || 'password123';
@@ -237,7 +238,7 @@ server.on('upgrade', (req, socket, head) => {
 
   // Determine which security checks are enabled based on the current defenseMode
   const requiresOriginCheck = defenseMode === 'origin' || defenseMode === 'both';
-  const requiresTicketCheck = defenseMode === 'both';
+  const requiresTicketCheck = defenseMode === 'ticket' || defenseMode === 'both';
 
   // --- DEFENSE 1: ORIGIN VALIDATION ---
   if (requiresOriginCheck) {

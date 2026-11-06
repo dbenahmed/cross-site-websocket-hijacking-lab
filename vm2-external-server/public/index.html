@@ -2,14 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Cross-Origin WebSocket Diagnostic Client (localhost:5000)</title>
+  <title>Cross-Origin WebSocket Diagnostic Client (https://192.168.28.132:5000)</title>
   <style>
     /* Styling with an orange theme to visually distinguish the external origin (port 5000) from the chat app (port 3000) */
     body { font-family: sans-serif; max-width: 720px; margin: 24px auto; padding: 0 16px; background: #fff7ed; color: #1e293b; }
     .card { background: #fff; border: 1px solid #fed7aa; border-radius: 6px; padding: 16px; margin-bottom: 16px; }
     h2, h3 { margin-top: 0; }
     input, button { padding: 8px 12px; font-size: 14px; border-radius: 4px; border: 1px solid #94a3b8; }
-    button { cursor: pointer; background: #ea580c; color: white; border: none; margin-right: 6px; }
+    button { cursor: pointer; background: #ea580c; color: white; border: none; margin-right: 6px; margin-bottom: 6px; }
     button.secondary { background: #475569; }
     #log { height: 260px; overflow-y: auto; border: 1px solid #cbd5e1; padding: 10px; background: #0f172a; color: #e2e8f0; font-family: monospace; font-size: 13px; border-radius: 4px; }
     .log-entry { margin-bottom: 6px; }
@@ -21,15 +21,15 @@
 <body>
   <h2>Cross-Origin Diagnostic Client (https://192.168.28.132:5000)</h2>
 
-  <!-- Card 1: Controls to test Cross-Origin WebSocket Handshake and Same-Origin Policy (SOP) on /api/ws-ticket -->
+  <!-- Card 1: Controls to test Cross-Origin WebSocket Handshake and One-Time Ticket Defense -->
   <div class="card">
     <h3>Target WebSocket Endpoint</h3>
     <div style="display: flex; gap: 8px; margin-bottom: 12px;">
       <input id="targetHost" type="text" value="192.168.28.131:3000" style="flex: 1;" />
     </div>
     <div>
-      <button id="testWsBtn">1. Test Cross-Origin WS Handshake</button>
-      <button id="testTicketFetchBtn" class="secondary">2. Test Cross-Origin Ticket Fetch (SOP Test)</button>
+      <button id="testWsBtn">1. Test Cross-Origin WS Handshake (Cookie Only)</button>
+      <button id="testTicketFlowBtn">2. Test One-Time Ticket Flow (Fetch Ticket + Connect WS)</button>
       <button id="clearBtn" class="secondary">Clear Log</button>
     </div>
   </div>
@@ -65,20 +65,13 @@
       }).catch(() => {});
     }
 
-    // Button 1: Initiate a cross-origin WebSocket connection from http://localhost:5000 to ws://localhost:3000/chat
-    document.getElementById('testWsBtn').addEventListener('click', () => {
-      // Close any previous test socket before starting a new handshake test
+    // Helper function to open a WebSocket to the given URL and log all handshake/message events
+    function openDiagnosticSocket(wsUrl) {
       if (testSocket) {
         testSocket.close();
       }
 
-      // Read the target host:port from the input box (defaults to 192.168.28.131:3000) and connect over wss://
-      const host = document.getElementById('targetHost').value.trim();
-      const wsUrl = `wss://${host}/chat`;
       writeLog(`Initiating cross-origin WebSocket from Origin "${window.location.origin}" -> ${wsUrl}`, 'info');
-
-      // Open the WebSocket connection; the browser automatically attaches any cookies scoped to the target host
-      // and automatically sets the HTTP header: Origin: http://localhost:5000
       testSocket = new WebSocket(wsUrl);
 
       // Fired ONLY if the server accepts the cross-origin upgrade (Vulnerable Mode)
@@ -105,27 +98,41 @@
       testSocket.onclose = (event) => {
         writeLog(`WebSocket closed (code: ${event.code}) — Connection rejected or terminated by server.`, 'err');
       };
+    }
+
+    // Button 1: Initiate a direct cross-origin WebSocket connection (relies on ambient cookies)
+    document.getElementById('testWsBtn').addEventListener('click', () => {
+      const host = document.getElementById('targetHost').value.trim();
+      const wsUrl = `wss://${host}/chat`;
+      openDiagnosticSocket(wsUrl);
     });
 
-    // Button 2: Demonstrate why an external origin cannot fetch a One-Time Ticket from POST /api/ws-ticket
-    document.getElementById('testTicketFetchBtn').addEventListener('click', async () => {
+    // Button 2: Test the One-Time Ticket Flow from an External Origin:
+    // Step A: Try to fetch a ticket from POST /api/ws-ticket (Blocked by Browser Same-Origin Policy!)
+    // Step B: Try to connect to wss://.../chat without a valid ticket (Rejected by Server Ticket Check!)
+    document.getElementById('testTicketFlowBtn').addEventListener('click', async () => {
       const host = document.getElementById('targetHost').value.trim();
       const ticketUrl = `https://${host}/api/ws-ticket`;
-      writeLog(`Attempting cross-origin POST ${ticketUrl} with credentials...`, 'info');
+      writeLog(`[Step 1/2] Attempting cross-origin POST ${ticketUrl} to obtain a One-Time Ticket...`, 'info');
 
+      let obtainedTicket = null;
       try {
-        // Attempt a cross-origin fetch() with credentials: 'include'
-        // Even though the browser sends the cookie, the browser's Same-Origin Policy (SOP / CORS)
-        // blocks JavaScript on port 5000 from reading the response from port 3000!
         const res = await fetch(ticketUrl, {
           method: 'POST',
           credentials: 'include'
         });
         const data = await res.json();
-        writeLog(`Unexpectedly read ticket: ${JSON.stringify(data)}`, 'err');
+        obtainedTicket = data.ticket;
+        writeLog(`Unexpectedly read ticket: ${obtainedTicket}`, 'err');
       } catch (err) {
-        writeLog(`BLOCKED BY SAME-ORIGIN POLICY (CORS): External origin cannot read /api/ws-ticket response (${err.message}).`, 'ok');
+        writeLog(`[Step 1/2 Result] BLOCKED BY SAME-ORIGIN POLICY (CORS): External origin cannot read /api/ws-ticket response (${err.message}).`, 'ok');
       }
+
+      writeLog('[Step 2/2] Attempting WebSocket connection without a valid ticket...', 'info');
+      const wsUrl = obtainedTicket
+        ? `wss://${host}/chat?ticket=${encodeURIComponent(obtainedTicket)}`
+        : `wss://${host}/chat`;
+      openDiagnosticSocket(wsUrl);
     });
 
     // Button 3: Clear the diagnostic log
