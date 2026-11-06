@@ -21,8 +21,8 @@ This guide is written so that **anyone visiting this repository for the first ti
 >    By default, modern browsers block `SameSite=None` unless `secure: true` (`https://`) is used. To allow `SameSite=None` with `secure: false` over plain `http://192.168.x.x` in your VM browser:
 >    - **In Firefox (e.g., Kali Linux / Ubuntu VM):**
 >      1. Open a new tab and go to **`about:config`** (click *Accept the Risk and Continue*).
->      2. Search for **`network.cookie.sameSite.noneRequiresSecure`**.
->      3. Double-click it to set it to **`false`**.
+>      2. Search for **`network.cookie.sameSite.noneRequiresSecure`** and double-click it to set it to **`false`**.
+>      3. Search for **`network.cookie.cookieBehavior`** and change its value from `5` to **`0`** (this disables Firefox's "Total Cookie Protection" so cross-IP cookies work in both Normal and Private Browsing windows).
 >    - **In Chrome / Chromium / Edge / Brave:**
 >      1. Open **`chrome://flags/#unsafely-treat-insecure-origin-as-secure`**.
 >      2. Enter your Chat Server URL (e.g. `http://192.168.28.131:3000`), set to **Enabled**, and relaunch.

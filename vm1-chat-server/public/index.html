@@ -11,6 +11,8 @@
     input, button { padding: 8px 12px; font-size: 14px; border-radius: 4px; border: 1px solid #94a3b8; }
     button { cursor: pointer; background: #2563eb; color: white; border: none; }
     button.secondary { background: #475569; }
+    button.mode-btn { margin-right: 6px; margin-bottom: 6px; background: #e2e8f0; color: #1e293b; }
+    button.mode-btn.active { background: #16a34a; color: white; font-weight: bold; }
     #messages { height: 240px; overflow-y: auto; border: 1px solid #e2e8f0; padding: 10px; background: #f1f5f9; margin-bottom: 10px; border-radius: 4px; }
     .msg { margin-bottom: 6px; font-size: 14px; }
     .meta { color: #64748b; font-size: 12px; }
@@ -21,16 +23,16 @@
 <body>
   <h2>Real-Time Chat (http://localhost:3000)</h2>
 
-  <!-- Card 1: Read-only display of the current backend defense mode configured in .env -->
+  <!-- Card 1: Control buttons to switch the backend defense mode live during demos -->
   <div class="card">
-    <h3>Server Defense Mode (Configured via <code>.env</code>)</h3>
+    <h3>Server Defense Mode</h3>
+    <p class="meta">Switch modes live and reconnect to test different defenses:</p>
+    <div id="modeButtons">
+      <button class="mode-btn" data-mode="vulnerable">1. Vulnerable (Cookie Only)</button>
+      <button class="mode-btn" data-mode="origin">2. Origin Validation</button>
+      <button class="mode-btn" data-mode="both">3. Origin + One-Time Ticket</button>
+    </div>
     <div id="modeStatus" class="status">Active Mode: loading...</div>
-    <p class="meta" style="margin-bottom: 0;">
-      Available <code>DEFENSE_MODE</code> values in <code>vm1-chat-server/.env</code>:<br/>
-      • <code>vulnerable</code> — Cookie only (no Origin check, no Ticket check)<br/>
-      • <code>origin</code> — Strict Origin header validation<br/>
-      • <code>both</code> — Origin validation + 15-second Single-Use Ticket
-    </p>
   </div>
 
   <!-- Card 2: Login form that sends credentials to POST /api/login to receive the JWT session cookie -->
@@ -63,7 +65,7 @@
   <script>
     // Track the currently logged-in user object
     let currentUser = null;
-    // Track the server's active security mode read from GET /api/me ('vulnerable' | 'origin' | 'both')
+    // Track the server's active security mode ('vulnerable' | 'origin' | 'both')
     let currentMode = 'vulnerable';
     // Hold a reference to the active browser WebSocket instance
     let ws = null;
@@ -75,10 +77,13 @@
     const loginCard = document.getElementById('loginCard');
     const chatCard = document.getElementById('chatCard');
 
-    // Update the read-only defense mode banner in the UI
+    // Update the highlighted defense mode button in the UI
     function updateModeUI(mode) {
       currentMode = mode;
-      modeStatusEl.textContent = `Active Server Defense Mode (.env): ${mode.toUpperCase()}`;
+      modeStatusEl.textContent = `Active Server Defense Mode: ${mode.toUpperCase()}`;
+      document.querySelectorAll('.mode-btn').forEach((btn) => {
+        btn.classList.toggle('active', btn.dataset.mode === mode);
+      });
     }
 
     // Safely render a single chat message row inside the #messages container
@@ -151,7 +156,7 @@
       };
     }
 
-    // On page load, check if the browser already has a valid session_token cookie and read the server's DEFENSE_MODE
+    // On page load, check if the browser already has a valid session_token cookie
     async function checkSession() {
       const res = await fetch('/api/me');
       const data = await res.json();
@@ -164,6 +169,23 @@
         connectWebSocket();
       }
     }
+
+    // Attach click listeners to each defense mode button so the mode can be switched live
+    document.querySelectorAll('.mode-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const res = await fetch('/api/mode', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: btn.dataset.mode })
+        });
+        const data = await res.json();
+        updateModeUI(data.mode);
+        // Reconnect the WebSocket automatically to demonstrate the new mode working for the legitimate client
+        if (currentUser) {
+          connectWebSocket();
+        }
+      });
+    });
 
     // Handle the Login button click
     document.getElementById('loginBtn').addEventListener('click', async () => {
@@ -182,7 +204,6 @@
       }
       document.getElementById('loginError').textContent = '';
       currentUser = data.user;
-      updateModeUI(data.mode);
       document.getElementById('userInfo').textContent = `Logged in as ${currentUser.name} (${currentUser.email})`;
       loginCard.classList.add('hidden');
       chatCard.classList.remove('hidden');

@@ -12,7 +12,7 @@ const cookieParser = require('cookie-parser');
 const jwt = require('jsonwebtoken');
 // Native Node.js WebSocket library; note that 'ws' does NOT check the Origin header by default
 const { WebSocketServer } = require('ws');
-// Load our server configuration (ports, allowed origins, ticket expiration, DEFENSE_MODE, etc.)
+// Load our server configuration (ports, allowed origins, ticket expiration, etc.)
 const config = require('./config');
 
 // Create the Express application instance for handling HTTP requests
@@ -22,18 +22,20 @@ const server = http.createServer(app);
 // Initialize WebSocketServer with { noServer: true } so we control the HTTP-to-WebSocket upgrade handshake manually
 const wss = new WebSocketServer({ noServer: true });
 
-// Enable Express to parse JSON request bodies (used by POST /api/login)
+// Enable Express to parse JSON request bodies (used by POST /api/login and POST /api/mode)
 app.use(express.json());
 // Enable Express to parse incoming cookies into req.cookies on standard HTTP requests
 app.use(cookieParser());
 // Serve the frontend chat interface (public/index.html) when a user visits http://localhost:3000
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Read the active defense mode from config (.env):
-// - 'vulnerable' = Cookie only (no Origin check, no Ticket check)
-// - 'origin'     = Origin header validation + Cookie check
-// - 'both'       = Origin header validation + Single-Use Ephemeral Ticket check
-const defenseMode = config.DEFENSE_MODE;
+// Track the currently active defense mode in memory so it can be toggled live from the frontend OR set via .env
+let defenseMode = config.DEFENSE_MODE;
+// List of allowed defense mode values:
+// 1. 'vulnerable' = Cookie only (no Origin check, no Ticket check)
+// 2. 'origin'     = Origin header validation + Cookie check
+// 3. 'both'       = Origin header validation + Single-Use Ephemeral Ticket check
+const VALID_MODES = ['vulnerable', 'origin', 'both'];
 
 // Demo password loaded from environment or defaulted for lab testing
 const DEMO_PASSWORD = process.env.DEMO_PASSWORD || 'password123';
@@ -106,8 +108,7 @@ app.post('/api/login', (req, res) => {
   // Sign the JWT so it expires in 2 hours
   const token = jwt.sign(payload, config.JWT_SECRET, { expiresIn: '2h' });
 
-  // Attach the JWT as an HTTP-only cookie
-  // Note: On plain HTTP in Kali Firefox, set network.cookie.sameSite.noneRequiresSecure = false in about:config
+  // Attach the JWT as an HTTP-only cookie with SameSite=None and secure=false for plain HTTP VM IPs
   res.cookie(config.COOKIE_NAME, token, {
     httpOnly: true,
     sameSite: 'None',
@@ -115,7 +116,7 @@ app.post('/api/login', (req, res) => {
     maxAge: 2 * 60 * 60 * 1000
   });
 
-  logServer('AUTH', `User logged in: ${user.name} (${user.email}) | Set-Cookie: ${config.COOKIE_NAME} (HttpOnly, SameSite=None)`);
+  logServer('AUTH', `User logged in: ${user.name} (${user.email}) | Set-Cookie: ${config.COOKIE_NAME} (HttpOnly, SameSite=None, secure=false)`);
 
   // Return the logged-in user details and current server defense mode to the frontend
   res.json({ user: payload, mode: defenseMode });
@@ -135,13 +136,29 @@ app.post('/api/logout', (req, res) => {
 app.get('/api/me', (req, res) => {
   // Read the session_token cookie from req.cookies and verify the JWT
   const user = getUserFromToken(req.cookies[config.COOKIE_NAME]);
-  // Return the user object (or null) and active defense mode configured in .env
+  // Return the user object (or null) and active defense mode
   res.json({ user, mode: defenseMode });
+});
+
+// HTTP Route: Switch the active server defense mode at runtime from the frontend
+app.post('/api/mode', (req, res) => {
+  // Extract the requested mode from the JSON body
+  const { mode } = req.body;
+  // Reject unknown mode names
+  if (!VALID_MODES.includes(mode)) {
+    return res.status(400).json({ error: 'Invalid mode' });
+  }
+  const previousMode = defenseMode;
+  // Update the server's active defense mode
+  defenseMode = mode;
+  logServer('MODE', `Defense mode switched: ${previousMode.toUpperCase()} -> ${defenseMode.toUpperCase()}`);
+  // Return the newly active defense mode
+  res.json({ mode: defenseMode });
 });
 
 // HTTP Route (Defense 2): Generate a short-lived (15s), single-use ticket for WebSocket connection
 // Because this is a standard HTTP POST endpoint without permissive CORS headers, the browser's
-// Same-Origin Policy (SOP) blocks external origins (like localhost:5000) from reading this response!
+// Same-Origin Policy (SOP) blocks external origins from reading this response!
 app.post('/api/ws-ticket', (req, res) => {
   const origin = req.headers.origin || 'unknown';
   // Verify the caller is logged in by checking their JWT session cookie
@@ -194,7 +211,7 @@ server.on('upgrade', (req, socket, head) => {
     return rejectUpgrade(socket, 404, 'Not Found');
   }
 
-  // Determine which security checks are enabled based on DEFENSE_MODE in .env
+  // Determine which security checks are enabled based on the current defenseMode
   const requiresOriginCheck = defenseMode === 'origin' || defenseMode === 'both';
   const requiresTicketCheck = defenseMode === 'both';
 
@@ -315,6 +332,6 @@ wss.on('connection', (ws, req) => {
 // Start the HTTP + WebSocket server on the configured host and port
 server.listen(config.PORT, config.HOST, () => {
   logServer('STARTUP', `Chat Server listening on http://${config.HOST}:${config.PORT}`);
-  logServer('STARTUP', `Active Defense Mode (.env DEFENSE_MODE): ${defenseMode.toUpperCase()}`);
+  logServer('STARTUP', `Initial Defense Mode: ${defenseMode.toUpperCase()}`);
   logServer('STARTUP', `Allowed Origins: [${config.ALLOWED_ORIGINS.join(', ')}]`);
 });
