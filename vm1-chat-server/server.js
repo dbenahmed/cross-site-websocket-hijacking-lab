@@ -1,5 +1,8 @@
-// Built-in Node.js HTTP module used to create the underlying HTTP server and intercept 'upgrade' events
-const http = require('http');
+// Built-in Node.js HTTPS module used to run the server over TLS so SameSite=None; Secure cookies work across raw VM IPs
+const https = require('https');
+// Built-in Node.js File System and Child Process modules used to auto-generate a self-signed certificate on first run
+const fs = require('fs');
+const { execFileSync } = require('child_process');
 // Built-in Node.js path module to safely construct file system paths across Windows and Linux VMs
 const path = require('path');
 // Built-in Node.js crypto module used to generate cryptographically random UUIDs for single-use tickets
@@ -15,18 +18,35 @@ const { WebSocketServer } = require('ws');
 // Load our server configuration (ports, allowed origins, ticket expiration, etc.)
 const config = require('./config');
 
-// Create the Express application instance for handling HTTP requests
+// Automatically generate a self-signed TLS certificate (cert.pem & key.pem) using OpenSSL if not already present
+const keyPath = path.join(__dirname, 'key.pem');
+const certPath = path.join(__dirname, 'cert.pem');
+if (!fs.existsSync(keyPath) || !fs.existsSync(certPath)) {
+  console.log('[TLS] Generating self-signed HTTPS certificate (key.pem & cert.pem)...');
+  execFileSync('openssl', [
+    'req', '-x509', '-newkey', 'rsa:2048', '-nodes',
+    '-keyout', keyPath,
+    '-out', certPath,
+    '-days', '365',
+    '-subj', '/CN=192.168.28.131'
+  ]);
+}
+
+// Create the Express application instance for handling HTTPS requests
 const app = express();
-// Wrap the Express app inside a raw Node.js HTTP server so we can manually listen to the 'upgrade' event
-const server = http.createServer(app);
-// Initialize WebSocketServer with { noServer: true } so we control the HTTP-to-WebSocket upgrade handshake manually
+// Wrap the Express app inside an HTTPS server using our self-signed certificate so we can listen to 'upgrade' events over WSS
+const server = https.createServer({
+  key: fs.readFileSync(keyPath),
+  cert: fs.readFileSync(certPath)
+}, app);
+// Initialize WebSocketServer with { noServer: true } so we control the HTTPS-to-WSS upgrade handshake manually
 const wss = new WebSocketServer({ noServer: true });
 
 // Enable Express to parse JSON request bodies (used by POST /api/login and POST /api/mode)
 app.use(express.json());
 // Enable Express to parse incoming cookies into req.cookies on standard HTTP requests
 app.use(cookieParser());
-// Serve the frontend chat interface (public/index.html) when a user visits http://localhost:3000
+// Serve the frontend chat interface (public/index.html) when a user visits https://192.168.28.131:3000
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Track the currently active defense mode in memory so it can be toggled live from the frontend OR set via .env
@@ -108,15 +128,15 @@ app.post('/api/login', (req, res) => {
   // Sign the JWT so it expires in 2 hours
   const token = jwt.sign(payload, config.JWT_SECRET, { expiresIn: '2h' });
 
-  // Attach the JWT as an HTTP-only cookie with SameSite=None and secure=false for plain HTTP VM IPs
+  // Because the server runs over HTTPS, SameSite=None + secure=true works natively across all raw VM IPs in Firefox & Chrome!
   res.cookie(config.COOKIE_NAME, token, {
     httpOnly: true,
     sameSite: 'None',
-    secure: false,
+    secure: true,
     maxAge: 2 * 60 * 60 * 1000
   });
 
-  logServer('AUTH', `User logged in: ${user.name} (${user.email}) | Set-Cookie: ${config.COOKIE_NAME} (HttpOnly, SameSite=None, secure=false)`);
+  logServer('AUTH', `User logged in: ${user.name} (${user.email}) | Set-Cookie: ${config.COOKIE_NAME} (HttpOnly, SameSite=None, Secure=true)`);
 
   // Return the logged-in user details and current server defense mode to the frontend
   res.json({ user: payload, mode: defenseMode });
@@ -126,7 +146,11 @@ app.post('/api/login', (req, res) => {
 app.post('/api/logout', (req, res) => {
   const user = getUserFromToken(req.cookies[config.COOKIE_NAME]);
   // Instruct the browser to clear the session_token cookie
-  res.clearCookie(config.COOKIE_NAME);
+  res.clearCookie(config.COOKIE_NAME, {
+    httpOnly: true,
+    sameSite: 'None',
+    secure: true
+  });
   logServer('AUTH', `User logged out: ${user ? user.email : 'unknown'}`);
   // Respond with success
   res.json({ ok: true });
@@ -157,7 +181,7 @@ app.post('/api/mode', (req, res) => {
 });
 
 // HTTP Route (Defense 2): Generate a short-lived (15s), single-use ticket for WebSocket connection
-// Because this is a standard HTTP POST endpoint without permissive CORS headers, the browser's
+// Because this is a standard HTTPS POST endpoint without permissive CORS headers, the browser's
 // Same-Origin Policy (SOP) blocks external origins from reading this response!
 app.post('/api/ws-ticket', (req, res) => {
   const origin = req.headers.origin || 'unknown';
@@ -179,23 +203,23 @@ app.post('/api/ws-ticket', (req, res) => {
 
   logServer('TICKET', `Issued 15s single-use ticket for ${user.email} | Request Origin: "${origin}" (Note: Browser SOP blocks untrusted origins from reading this response)`);
 
-  // Send the ticket back to the same-origin frontend so it can connect to ws://.../chat?ticket=<uuid>
+  // Send the ticket back to the same-origin frontend so it can connect to wss://.../chat?ticket=<uuid>
   res.json({ ticket, expiresInSeconds: config.TICKET_TTL_MS / 1000 });
 });
 
-// Helper function to immediately terminate an unauthorized HTTP-to-WebSocket upgrade request
+// Helper function to immediately terminate an unauthorized HTTPS-to-WSS upgrade request
 function rejectUpgrade(socket, statusCode, message) {
   logServer('WS-REJECT', `HTTP ${statusCode} ${message}`);
-  // Write a raw HTTP error response directly to the underlying TCP socket
+  // Write a raw HTTP error response directly to the underlying TLS socket
   socket.write(`HTTP/1.1 ${statusCode} ${message}\r\nConnection: close\r\n\r\n`);
-  // Close and destroy the TCP socket so the WebSocket handshake cannot proceed
+  // Close and destroy the socket so the WebSocket handshake cannot proceed
   socket.destroy();
 }
 
 // Intercept every raw HTTP 'upgrade' request before the WebSocket connection is established
 server.on('upgrade', (req, socket, head) => {
   // Parse the incoming request URL so we can inspect the path (/chat) and query parameters (?ticket=...)
-  const requestUrl = new URL(req.url, `http://${req.headers.host}`);
+  const requestUrl = new URL(req.url, `https://${req.headers.host}`);
   const origin = req.headers.origin || 'missing';
   const cookies = parseCookies(req.headers.cookie);
   const hasSessionCookie = Boolean(cookies[config.COOKIE_NAME]);
@@ -256,7 +280,7 @@ server.on('upgrade', (req, socket, head) => {
 
     // If no valid session cookie is present, reject the handshake with 401 Unauthorized
     if (!authenticatedUser) {
-      logServer('AUTH-COOKIE', 'BLOCKED! Browser did not attach a valid session_token cookie (check SameSite / login state).');
+      logServer('AUTH-COOKIE', 'BLOCKED! Browser did not attach a valid session_token cookie.');
       return rejectUpgrade(socket, 401, 'Unauthorized: Missing or Invalid Cookie');
     }
     logServer('AUTH-COOKIE', `Authenticated via ambient cookie as: ${authenticatedUser.name} (${authenticatedUser.email})`);
@@ -329,9 +353,9 @@ wss.on('connection', (ws, req) => {
   });
 });
 
-// Start the HTTP + WebSocket server on the configured host and port
+// Start the HTTPS + WSS server on the configured host and port
 server.listen(config.PORT, config.HOST, () => {
-  logServer('STARTUP', `Chat Server listening on http://${config.HOST}:${config.PORT}`);
+  logServer('STARTUP', `HTTPS Chat Server listening on https://${config.HOST}:${config.PORT}`);
   logServer('STARTUP', `Initial Defense Mode: ${defenseMode.toUpperCase()}`);
   logServer('STARTUP', `Allowed Origins: [${config.ALLOWED_ORIGINS.join(', ')}]`);
 });

@@ -72,9 +72,9 @@
         testSocket.close();
       }
 
-      // Read the target host:port from the input box (defaults to 192.168.28.131:3000)
+      // Read the target host:port from the input box (defaults to 192.168.28.131:3000) and connect over wss://
       const host = document.getElementById('targetHost').value.trim();
-      const wsUrl = `ws://${host}/chat`;
+      const wsUrl = `wss://${host}/chat`;
       writeLog(`Initiating cross-origin WebSocket from Origin "${window.location.origin}" -> ${wsUrl}`, 'info');
 
       // Open the WebSocket connection; the browser automatically attaches any cookies scoped to the target host
@@ -110,7 +110,7 @@
     // Button 2: Demonstrate why an external origin cannot fetch a One-Time Ticket from POST /api/ws-ticket
     document.getElementById('testTicketFetchBtn').addEventListener('click', async () => {
       const host = document.getElementById('targetHost').value.trim();
-      const ticketUrl = `http://${host}/api/ws-ticket`;
+      const ticketUrl = `https://${host}/api/ws-ticket`;
       writeLog(`Attempting cross-origin POST ${ticketUrl} with credentials...`, 'info');
 
       try {

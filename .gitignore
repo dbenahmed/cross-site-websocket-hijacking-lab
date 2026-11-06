@@ -2,10 +2,11 @@
 node_modules/
 package-lock.json
 
-# Environment variable files (never commit .env files)
+# Environment variable & certificate files (never commit .env or private keys)
 .env
 *.env
 !.env.example
+*.pem
 
 # OS & Editor files
 .DS_Store

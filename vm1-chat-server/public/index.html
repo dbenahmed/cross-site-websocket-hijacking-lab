@@ -107,8 +107,9 @@
         ws.close();
       }
 
-      // Build the base WebSocket URL pointing to the current host
-      let wsUrl = `ws://${window.location.host}/chat`;
+      // Build the base WebSocket URL using wss:// when loaded over https://
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      let wsUrl = `${wsProtocol}//${window.location.host}/chat`;
 
       // If the server is in 'both' mode (Origin + One-Time Ticket), request a ticket via HTTP POST first
       if (currentMode === 'both') {

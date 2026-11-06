@@ -30,7 +30,7 @@ module.exports = {
   COOKIE_NAME: 'session_token',
 
   // Explicit allowlist of trusted Origin headers allowed to open a WebSocket when Origin Validation is enabled
-  ALLOWED_ORIGINS: (process.env.ALLOWED_ORIGIN || 'http://localhost:3000,http://192.168.28.131:3000')
+  ALLOWED_ORIGINS: (process.env.ALLOWED_ORIGIN || 'https://localhost:3000,https://192.168.28.131:3000')
     .split(',')
     .map((origin) => origin.trim()),
 
