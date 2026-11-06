@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>CSWSH Interactive Visual Guide & Mindmap</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0b1120;
+      color: #f8fafc;
+      margin: 0;
+      padding: 28px 20px;
+      line-height: 1.55;
+    }
+    .container { max-width: 1240px; margin: 0 auto; }
+    h1 { text-align: center; color: #38bdf8; margin-bottom: 6px; font-size: 28px; }
+    .subtitle { text-align: center; color: #94a3b8; margin-top: 0; margin-bottom: 32px; font-size: 15px; }
+    .section-title {
+      color: #38bdf8;
+      border-bottom: 2px solid #1e293b;
+      padding-bottom: 8px;
+      margin-top: 36px;
+      margin-bottom: 18px;
+      font-size: 20px;
+    }
+
+    /* Mindmap Tree Layout */
+    .mindmap-box {
+      background: #111827;
+      border: 1px solid #1e293b;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 28px;
+    }
+    .root-node {
+      background: linear-gradient(135deg, #0284c7, #2563eb);
+      color: white;
+      padding: 16px 24px;
+      border-radius: 10px;
+      text-align: center;
+      font-weight: bold;
+      font-size: 18px;
+      max-width: 680px;
+      margin: 0 auto 24px auto;
+      box-shadow: 0 4px 20px rgba(37, 99, 235, 0.35);
+    }
+    .branches {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+    .branch {
+      background: #1e293b;
+      border-top: 4px solid #38bdf8;
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .branch.b-red { border-top-color: #f87171; }
+    .branch.b-yellow { border-top-color: #facc15; }
+    .branch.b-purple { border-top-color: #c084fc; }
+    .branch.b-green { border-top-color: #4ade80; }
+    .branch h4 { margin: 0 0 10px 0; font-size: 15px; color: #f1f5f9; }
+    .leaf {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+      font-size: 13px;
+      color: #cbd5e1;
+    }
+    .leaf strong { color: #f8fafc; display: block; margin-bottom: 3px; }
+
+    /* Interactive Scenario Simulator */
+    .sim-tabs {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+    .sim-tab {
+      background: #1e293b;
+      color: #cbd5e1;
+      border: 1px solid #334155;
+      padding: 10px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 14px;
+    }
+    .sim-tab.active {
+      background: #2563eb;
+      color: white;
+      border-color: #3b82f6;
+    }
+    .sim-panel {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 28px;
+    }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 18px;
+    }
+    .card h3 { margin-top: 0; color: #f1f5f9; font-size: 17px; }
+    .badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+    .badge-red { background: #7f1d1d; color: #fca5a5; }
+    .badge-green { background: #14532d; color: #86efac; }
+    .badge-blue { background: #0c4a6e; color: #7dd3fc; }
+    .badge-yellow { background: #713f12; color: #fde047; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #1e293b;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    th, td {
+      border: 1px solid #334155;
+      padding: 12px 14px;
+      text-align: left;
+      font-size: 13.5px;
+    }
+    th { background: #0369a1; color: white; }
+    code {
+      background: #0f172a;
+      color: #38bdf8;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 12.5px;
+    }
+    .step-box {
+      background: #0f172a;
+      border-left: 4px solid #38bdf8;
+      padding: 10px 14px;
+      margin-bottom: 10px;
+      border-radius: 4px;
+      font-size: 13.5px;
+    }
+    .step-box.danger { border-left-color: #ef4444; }
+    .step-box.safe { border-left-color: #22c55e; }
+    @media (max-width: 960px) {
+      .branches, .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Cross-Site WebSocket Hijacking (CSWSH) — Visual Architecture & Mindmap</h1>
+    <p class="subtitle">A complete visual guide to the problem, browser cookie vs. origin rules, edge cases, and our 3 server modes</p>
+
+    <!-- 1. VISUAL MINDMAP TREE -->
+    <div class="section-title">1. Visual Mindmap: How Everything Connects</div>
+    <div class="mindmap-box">
+      <div class="root-node">
+        Cross-Site WebSocket Hijacking (CSWSH)<br/>
+        <span style="font-size: 13px; font-weight: normal; opacity: 0.9;">
+          Why an external tab can hijack a live WebSocket stream WITHOUT ever seeing the user's JWT token
+        </span>
+      </div>
+
+      <div class="branches">
+        <!-- Branch 1 -->
+        <div class="branch b-red">
+          <h4>A. Why the Vulnerability Exists</h4>
+          <div class="leaf">
+            <strong>1. No Browser SOP on WebSockets</strong>
+            Unlike <code>fetch()</code>, the browser's Same-Origin Policy does NOT block cross-origin <code>new WebSocket()</code> connections.
+          </div>
+          <div class="leaf">
+            <strong>2. Raw Node.js <code>ws</code> Accepts All Origins</strong>
+            By default, <code>ws</code> does not inspect <code>req.headers.origin</code> during the HTTP Upgrade handshake.
+          </div>
+          <div class="leaf">
+            <strong>3. Ambient Cookie Attachment</strong>
+            When Tab 2 opens <code>ws://chat-server/chat</code>, the browser automatically attaches the user's cookie for <code>chat-server</code>.
+          </div>
+          <div class="leaf">
+            <strong>4. No Custom WS Headers in Browser</strong>
+            Browser <code>new WebSocket(url)</code> does not allow custom <code>Authorization: Bearer</code> headers, pushing developers to use cookies.
+          </div>
+        </div>
+
+        <!-- Branch 2 -->
+        <div class="branch b-yellow">
+          <h4>B. What the External Page Can &amp; Cannot Do</h4>
+          <div class="leaf">
+            <strong>CANNOT Read <code>document.cookie</code></strong>
+            The JWT cookie is <code>HttpOnly</code> and scoped to the Chat Server. Tab 2 <u>never</u> sees the JWT token string!
+          </div>
+          <div class="leaf">
+            <strong>CANNOT Read HTTP <code>fetch()</code></strong>
+            If Tab 2 calls <code>fetch("http://chat-server/api/...")</code>, the browser's Same-Origin Policy (CORS) blocks Tab 2 from reading the response.
+          </div>
+          <div class="leaf">
+            <strong>CAN Hijack <code>new WebSocket()</code></strong>
+            If the server only checks the cookie, Tab 2 gets a live 2-way WebSocket pipe to read private messages and send forged ones!
+          </div>
+        </div>
+
+        <!-- Branch 3 -->
+        <div class="branch b-purple">
+          <h4>C. Browser Rules: "Site" vs "Origin"</h4>
+          <div class="leaf">
+            <strong>SITE (Controls <code>SameSite</code> Cookies)</strong>
+            Checks <code>scheme + root domain</code> ONLY.<br/>
+            <u>Ignores ports and subdomains!</u><br/>
+            • <code>localhost:5000</code> &amp; <code>:3000</code> = <b>Same Site</b><br/>
+            • <code>blog.co.com</code> &amp; <code>chat.co.com</code> = <b>Same Site</b>
+          </div>
+          <div class="leaf">
+            <strong>ORIGIN (Controls <code>fetch</code> SOP &amp; <code>Origin</code> Header)</strong>
+            Checks <code>scheme + exact subdomain + exact port</code>.<br/>
+            • <code>localhost:5000</code> &ne; <code>localhost:3000</code><br/>
+            • <code>blog.co.com</code> &ne; <code>chat.co.com</code>
+          </div>
+          <div class="leaf">
+            <strong>Public Suffix List (PSL)</strong>
+            Cloud domains like <code>*.netlify.app</code>, <code>*.vercel.app</code>, <code>*.azurewebsites.net</code> are treated as <b>Different Sites</b>.
+          </div>
+        </div>
+
+        <!-- Branch 4 -->
+        <div class="branch b-green">
+          <h4>D. Our Two Defenses (Mode 2 &amp; Mode 3)</h4>
+          <div class="leaf">
+            <strong>Defense 1: Strict Origin Validation</strong>
+            Server checks <code>req.headers.origin</code> on the HTTP <code>upgrade</code> event against <code>ALLOWED_ORIGINS</code>. Rejects untrusted origins with <code>403 Forbidden</code>.
+          </div>
+          <div class="leaf">
+            <strong>Defense 2: Single-Use Ticket (15s TTL)</strong>
+            WebSocket upgrade ignores cookies completely! Client must first call <code>POST /api/ws-ticket</code> (protected by Browser SOP) to get a 15-second UUID, which is burned immediately on first use.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. INTERACTIVE EDGE CASE EXPLORER -->
+    <div class="section-title">2. Interactive Scenario Explorer: Click Each Case to See What Happens</div>
+    <div class="sim-tabs">
+      <button class="sim-tab active" onclick="showScenario(0)">Case 1: Different Ports (localhost:5000 &rarr; :3000)</button>
+      <button class="sim-tab" onclick="showScenario(1)">Case 2: Company Subdomains (blog.company.com &rarr; chat.company.com)</button>
+      <button class="sim-tab" onclick="showScenario(2)">Case 3: Separate Cloud Domains / Raw IPs (evil.com or .132 &rarr; .131)</button>
+      <button class="sim-tab" onclick="showScenario(3)">Case 4: What if SameSite=Strict is Used?</button>
+    </div>
+
+    <div id="scenarioContent" class="sim-panel"></div>
+
+    <!-- 3. THE 3 SERVER MODES IN CODE -->
+    <div class="section-title">3. Side-by-Side Comparison of the 3 Modes in Our Project</div>
+    <div class="grid-3">
+      <div class="card">
+        <h3>1. Vulnerable (Cookie Only) <span class="badge badge-red">vulnerable</span></h3>
+        <div class="step-box danger">
+          <strong>How it authenticates:</strong><br/>
+          Reads <code>req.headers.cookie</code> during <code>server.on('upgrade')</code> and verifies the JWT.
+        </div>
+        <div class="step-box danger">
+          <strong>Why it fails:</strong><br/>
+          Completely ignores <code>req.headers.origin</code>. Any external tab whose browser attaches the cookie is upgraded (<code>101 Switching Protocols</code>).
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>2. Origin Validation <span class="badge badge-blue">origin</span></h3>
+        <div class="step-box safe">
+          <strong>How it protects:</strong><br/>
+          Checks <code>config.ALLOWED_ORIGINS.includes(req.headers.origin)</code> before upgrading.
+        </div>
+        <div class="step-box safe">
+          <strong>Why it works:</strong><br/>
+          The browser stamps the true <code>Origin</code> header (e.g. <code>http://localhost:5000</code>) and forbids JS from spoofing it. Server rejects with <code>403 Forbidden</code>.
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>3. Origin + One-Time Ticket <span class="badge badge-green">both</span></h3>
+        <div class="step-box safe">
+          <strong>Step 1 (HTTP POST):</strong><br/>
+          Client calls <code>fetch('/api/ws-ticket')</code> to get a 15s UUID. External origins are <b>blocked by Browser SOP</b> from reading this response!
+        </div>
+        <div class="step-box safe">
+          <strong>Step 2 (WS Upgrade):</strong><br/>
+          Server checks <code>Origin</code> AND requires <code>?ticket=&lt;uuid&gt;</code> (ignoring cookies on WS), then immediately deletes the ticket from memory so it can never be reused.
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. MASTER COMPARISON TABLE -->
+    <div class="section-title">4. Master Reference Table (All Cases at a Glance)</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Scenario (External Page &rarr; Chat Server)</th>
+          <th>Same-Site?</th>
+          <th>Cookie Sent if <code>SameSite=Lax/Strict</code>?</th>
+          <th>Cookie Sent if <code>SameSite=None</code>?</th>
+          <th>Can External Page Read <code>fetch()</code>?</th>
+          <th>Mode 1 (Vulnerable)</th>
+          <th>Mode 2 (Origin) &amp; Mode 3 (Origin + Ticket)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Different Ports on Localhost</strong><br/><code>http://localhost:5000</code> &rarr; <code>http://localhost:3000</code></td>
+          <td><span class="badge badge-red">YES</span></td>
+          <td><span class="badge badge-red">YES</span></td>
+          <td><span class="badge badge-red">YES</span></td>
+          <td><span class="badge badge-green">Blocked by SOP</span></td>
+          <td><span class="badge badge-red">HIJACKED (101)</span></td>
+          <td><span class="badge badge-green">BLOCKED (403)</span></td>
+        </tr>
+        <tr>
+          <td><strong>Sibling Subdomains (Company / University)</strong><br/><code>https://blog.company.com</code> &rarr; <code>https://chat.company.com</code></td>
+          <td><span class="badge badge-red">YES</span></td>
+          <td><span class="badge badge-red">YES</span></td>
+          <td><span class="badge badge-red">YES</span></td>
+          <td><span class="badge badge-green">Blocked by SOP</span></td>
+          <td><span class="badge badge-red">HIJACKED (101)</span></td>
+          <td><span class="badge badge-green">BLOCKED (403)</span></td>
+        </tr>
+        <tr>
+          <td><strong>Separate Domains / Cloud PSL / Raw IPs</strong><br/><code>evil.com</code> &rarr; <code>api.onrender.com</code> or <code>.132</code> &rarr; <code>.131</code></td>
+          <td><span class="badge badge-blue">NO</span></td>
+          <td><span class="badge badge-green">NO</span></td>
+          <td><span class="badge badge-red">YES</span></td>
+          <td><span class="badge badge-green">Blocked by SOP</span></td>
+          <td><span class="badge badge-red">HIJACKED if SameSite=None</span></td>
+          <td><span class="badge badge-green">BLOCKED (403)</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <script>
+    const scenarios = [
+      {
+        title: 'Case 1: Different Ports on the Same Machine (http://localhost:5000 -> http://localhost:3000)',
+        why: 'Cookies ignore port numbers! So the browser sees port 5000 and port 3000 as the SAME SITE and attaches the cookie automatically (even with SameSite=Lax or SameSite=Strict).',
+        fetchResult: 'BLOCKED! Because Same-Origin Policy (SOP) checks exact port numbers (5000 != 3000), Tab 2 cannot read fetch("http://localhost:3000/api/ws-ticket").',
+        wsResult: 'In Mode 1 (Vulnerable), Tab 2 hijacks the WebSocket! In Mode 2 (Origin) and Mode 3 (Origin + Ticket), the server blocks Tab 2 with 403 Forbidden.'
+      },
+      {
+        title: 'Case 2: Sibling Subdomains in a Company or University (https://blog.company.com -> https://chat.company.com)',
+        why: 'Both subdomains share the root domain ".company.com". The browser treats all subdomains of company.com as the SAME SITE, so it attaches the chat.company.com cookie even if SameSite=Lax or SameSite=Strict is set!',
+        fetchResult: 'BLOCKED! Even though they share .company.com, their Origins are different (blog.company.com != chat.company.com). Tab 2 NEVER gets the token and CANNOT read HTTP fetch() responses!',
+        wsResult: 'Without Origin Validation and Tickets, blog.company.com can hijack wss://chat.company.com/chat! With Mode 2 & Mode 3, it is completely blocked.'
+      },
+      {
+        title: 'Case 3: Separate Domains, Public Cloud URLs (netlify.app / onrender.com), or Raw VM IPs (192.168.28.132 -> 192.168.28.131)',
+        why: 'Two different domains, two raw IP addresses, or two subdomains on the Public Suffix List (like app1.netlify.app and app2.netlify.app) have NO shared private root domain. The browser treats them as CROSS-SITE.',
+        fetchResult: 'BLOCKED by Browser SOP / CORS.',
+        wsResult: 'When the backend sets SameSite=None; Secure (used whenever frontend & backend are hosted on separate cloud domains or embedded widgets), the browser attaches the cookie and Mode 1 is hijacked! Mode 2 and Mode 3 block it with 403 Forbidden.'
+      },
+      {
+        title: 'Case 4: Reviewer Question — "What if we set SameSite=Strict? How can WebSockets still be vulnerable when HTTP fetch is blocked?"',
+        why: '1) SameSite=Strict IGNORES subdomains and ports (so blog.company.com or localhost:5000 STILL sends a SameSite=Strict cookie!). 2) SameSite=Strict ONLY applies to cookies—it does NOT protect localhost tools (ws://localhost:port) or intranet apps using HTTP Basic Auth / Windows Domain Auth / mTLS certificates!',
+        fetchResult: 'HTTP fetch() is STILL blocked in all of those cases by the Browser Same-Origin Policy!',
+        wsResult: 'WebSockets are STILL hijacked in Mode 1 unless the server enforces Origin Validation (Mode 2) and Single-Use Ephemeral Tickets (Mode 3).'
+      }
+    ];
+
+    function showScenario(index) {
+      document.querySelectorAll('.sim-tab').forEach((btn, i) => {
+        btn.classList.toggle('active', i === index);
+      });
+      const s = scenarios[index];
+      document.getElementById('scenarioContent').innerHTML = `
+        <h3 style="margin-top:0; color:#38bdf8;">${s.title}</h3>
+        <div class="step-box"><strong>1. Cookie &amp; Site Rule:</strong> ${s.why}</div>
+        <div class="step-box safe"><strong>2. What happens to HTTP <code>fetch()</code>?</strong> ${s.fetchResult}</div>
+        <div class="step-box danger"><strong>3. What happens to <code>new WebSocket()</code>?</strong> ${s.wsResult}</div>
+      `;
+    }
+
+    showScenario(0);
+  </script>
+</body>
+</html>

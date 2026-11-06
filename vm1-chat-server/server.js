@@ -31,8 +31,11 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Track the currently active defense mode in memory so it can be toggled live during demonstrations
 let defenseMode = config.INITIAL_MODE;
-// List of allowed defense mode values
-const VALID_MODES = ['vulnerable', 'origin', 'ticket', 'both'];
+// List of allowed defense mode values:
+// 1. 'vulnerable' = Cookie only (no Origin check, no Ticket check)
+// 2. 'origin'     = Origin header validation + Cookie check
+// 3. 'both'       = Origin header validation + Single-Use Ephemeral Ticket check
+const VALID_MODES = ['vulnerable', 'origin', 'both'];
 
 // Demo password loaded from environment or defaulted for lab testing
 const DEMO_PASSWORD = process.env.DEMO_PASSWORD || 'password123';
@@ -99,12 +102,12 @@ app.post('/api/login', (req, res) => {
   // Sign the JWT so it expires in 2 hours
   const token = jwt.sign(payload, config.JWT_SECRET, { expiresIn: '2h' });
 
-  // Attach the JWT as an HTTP-only cookie in the response
-  // httpOnly: true prevents client-side JavaScript from reading document.cookie
-  // sameSite: 'Lax' is the modern browser default; it still sends cookies across ports on localhost or subdomains of the same site
+  // Attach the JWT as an HTTP-only cookie with SameSite=None so it is sent across different domains/IPs
+  // secure: true is required by modern browsers whenever sameSite is set to 'None'
   res.cookie(config.COOKIE_NAME, token, {
     httpOnly: true,
-    sameSite: 'Lax',
+    sameSite: 'None',
+    secure: true,
     maxAge: 2 * 60 * 60 * 1000
   });
 
@@ -185,7 +188,7 @@ server.on('upgrade', (req, socket, head) => {
 
   // Determine which security checks are enabled based on the current defenseMode
   const requiresOriginCheck = defenseMode === 'origin' || defenseMode === 'both';
-  const requiresTicketCheck = defenseMode === 'ticket' || defenseMode === 'both';
+  const requiresTicketCheck = defenseMode === 'both';
 
   // --- DEFENSE 1: ORIGIN VALIDATION ---
   if (requiresOriginCheck) {

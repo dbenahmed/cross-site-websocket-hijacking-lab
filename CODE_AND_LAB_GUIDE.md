@@ -226,9 +226,7 @@ Open the web browser on **VM 3**:
    - In Tab 1 (`localhost:3000`), click **2. Origin Validation**.
    - In Tab 2 (`localhost:5000`), click **1. Test Cross-Origin WS Handshake**.
    - Show that the server immediately rejects Tab 2 (`403 Forbidden: Untrusted Origin`), while Tab 1 stays connected.
-5. **Demo 3 — One-Time Ticket Defense:**
-   - In Tab 1 (`localhost:3000`), click **3. One-Time Ticket**. Point out the status bar showing `ws://localhost:3000/chat?ticket=<uuid>`.
+5. **Demo 3 — Origin Validation + One-Time Ticket Defense:**
+   - In Tab 1 (`localhost:3000`), click **3. Origin + One-Time Ticket**. Point out the status bar showing `ws://localhost:3000/chat?ticket=<uuid>`.
    - In Tab 2 (`localhost:5000`), click **2. Test Cross-Origin Ticket Fetch (SOP Test)** → Show that the Same-Origin Policy blocks Tab 2 from reading `/api/ws-ticket`.
-   - In Tab 2 (`localhost:5000`), click **1. Test Cross-Origin WS Handshake** → Show that the handshake is rejected because Tab 2 has no valid ticket.
-6. **Demo 4 — Both Defenses Combined:**
-   - In Tab 1 (`localhost:3000`), click **4. Both (Origin + Ticket)** to demonstrate defense-in-depth.
+   - In Tab 2 (`localhost:5000`), click **1. Test Cross-Origin WS Handshake** → Show that the handshake is rejected by both Origin Validation and the Ticket check.

@@ -30,13 +30,13 @@ module.exports = {
   COOKIE_NAME: 'session_token',
 
   // Explicit allowlist of trusted Origin headers allowed to open a WebSocket when Origin Validation is enabled
-  ALLOWED_ORIGINS: [
-    process.env.ALLOWED_ORIGIN || 'http://localhost:3000'
-  ],
+  ALLOWED_ORIGINS: (process.env.ALLOWED_ORIGIN || 'http://localhost:3000,http://192.168.28.131:3000')
+    .split(',')
+    .map((origin) => origin.trim()),
 
   // Lifetime of a single-use WebSocket ticket in milliseconds (15 seconds = 15000 ms)
   TICKET_TTL_MS: Number(process.env.TICKET_TTL_MS) || 15 * 1000,
 
-  // Default security mode when the server starts ('vulnerable' | 'origin' | 'ticket' | 'both')
+  // Default security mode when the server starts ('vulnerable' | 'origin' | 'both')
   INITIAL_MODE: process.env.DEFENSE_MODE || 'vulnerable'
 };
