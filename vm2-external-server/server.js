@@ -1,7 +1,8 @@
-// Built-in Node.js HTTP module to create a minimal web server on port 5000 without any external npm packages
-const http = require('http');
-// Built-in Node.js File System module to read .env and public/index.html from disk
+// Built-in Node.js HTTPS module so the external origin runs over https:// (required for Secure Context cookie attachment)
+const https = require('https');
+// Built-in Node.js File System and Child Process modules to read .env, index.html, and auto-generate TLS certs
 const fs = require('fs');
+const { execFileSync } = require('child_process');
 // Built-in Node.js Path module to resolve file paths across operating systems
 const path = require('path');
 
@@ -18,9 +19,23 @@ if (fs.existsSync(envPath)) {
   });
 }
 
+// Automatically generate a self-signed TLS certificate (cert.pem & key.pem) using OpenSSL if not already present
+const keyPath = path.join(__dirname, 'key.pem');
+const certPath = path.join(__dirname, 'cert.pem');
+if (!fs.existsSync(keyPath) || !fs.existsSync(certPath)) {
+  console.log('[TLS] Generating self-signed HTTPS certificate for External Server (key.pem & cert.pem)...');
+  execFileSync('openssl', [
+    'req', '-x509', '-newkey', 'rsa:2048', '-nodes',
+    '-keyout', keyPath,
+    '-out', certPath,
+    '-days', '365',
+    '-subj', '/CN=192.168.28.132'
+  ]);
+}
+
 // Bind to 0.0.0.0 so the server is reachable both via localhost:5000 and across a Host-Only VM network
 const HOST = process.env.HOST || '0.0.0.0';
-// Port 5000 makes this server a completely separate browser Origin (http://localhost:5000 vs http://localhost:3000)
+// Port 5000 makes this server a completely separate browser Origin (https://192.168.28.132:5000 vs https://192.168.28.131:3000)
 const PORT = Number(process.env.PORT) || 5000;
 
 // Helper function to print timestamped logs in the External Server terminal
@@ -28,8 +43,11 @@ function logExternal(category, message) {
   console.log(`[${new Date().toLocaleTimeString()}] [${category}] ${message}`);
 }
 
-// Create the HTTP server that serves the Cross-Origin Diagnostic HTML page and logs browser test events
-const server = http.createServer((req, res) => {
+// Create the HTTPS server that serves the Cross-Origin Diagnostic HTML page and logs browser test events
+const server = https.createServer({
+  key: fs.readFileSync(keyPath),
+  cert: fs.readFileSync(certPath)
+}, (req, res) => {
   // Endpoint called by the diagnostic page to mirror browser test events into this server's terminal console
   if (req.method === 'POST' && req.url === '/api/log') {
     let body = '';
@@ -50,11 +68,11 @@ const server = http.createServer((req, res) => {
   }
 
   // Log when a browser loads the external origin page
-  logExternal('HTTP-GET', `Client (${req.socket.remoteAddress}) loaded External Origin page (${req.url})`);
+  logExternal('HTTPS-GET', `Client (${req.socket.remoteAddress}) loaded External Origin page (${req.url})`);
 
   // Locate public/index.html relative to this server.js file
   const indexPath = path.join(__dirname, 'public', 'index.html');
-  // Read the HTML file from disk and send it in the HTTP response
+  // Read the HTML file from disk and send it in the HTTPS response
   fs.readFile(indexPath, (err, content) => {
     if (err) {
       res.writeHead(500);
@@ -66,7 +84,7 @@ const server = http.createServer((req, res) => {
   });
 });
 
-// Start listening for incoming HTTP connections on port 5000
+// Start listening for incoming HTTPS connections on port 5000
 server.listen(PORT, HOST, () => {
-  logExternal('STARTUP', `External Origin Diagnostic Server listening on http://${HOST}:${PORT}`);
+  logExternal('STARTUP', `HTTPS External Origin Diagnostic Server listening on https://${HOST}:${PORT}`);
 });
