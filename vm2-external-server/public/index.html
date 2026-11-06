@@ -16,6 +16,7 @@
     .ok { color: #4ade80; }
     .err { color: #f87171; }
     .info { color: #38bdf8; }
+    .label { font-size: 13px; color: #475569; margin-bottom: 4px; display: block; font-weight: bold; }
   </style>
 </head>
 <body>
@@ -24,12 +25,17 @@
   <!-- Card 1: Controls to test Cross-Origin WebSocket Handshake and One-Time Ticket Defense -->
   <div class="card">
     <h3>Target WebSocket Endpoint</h3>
-    <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-      <input id="targetHost" type="text" value="192.168.28.131:3000" style="flex: 1;" />
+    <div style="margin-bottom: 10px;">
+      <label class="label">Server Host:Port</label>
+      <input id="targetHost" type="text" value="192.168.28.131:3000" style="width: 100%; box-sizing: border-box;" />
+    </div>
+    <div style="margin-bottom: 12px;">
+      <label class="label">Optional Ticket UUID (to test replaying an already-used ticket or entering a ticket):</label>
+      <input id="ticketInput" type="text" placeholder="e.g. a4b91c4d-c026-476a-be42-d354226660b9 (leave empty for none)" style="width: 100%; box-sizing: border-box;" />
     </div>
     <div>
-      <button id="testWsBtn">1. Test Cross-Origin WS Handshake (Cookie Only)</button>
-      <button id="testTicketFlowBtn">2. Test One-Time Ticket Flow (Fetch Ticket + Connect WS)</button>
+      <button id="testWsBtn">1. Test Cross-Origin WS Handshake</button>
+      <button id="testTicketFlowBtn">2. Test One-Time Ticket Flow (Auto-Fetch Ticket + Connect WS)</button>
       <button id="clearBtn" class="secondary">Clear Log</button>
     </div>
   </div>
@@ -65,6 +71,32 @@
       }).catch(() => {});
     }
 
+    // Build a properly formatted wss://<host>/chat[?ticket=...] URL even if the user pasted ?ticket=... into the host box
+    function buildTargetUrls(overrideTicket) {
+      const rawHostInput = document.getElementById('targetHost').value.trim();
+      const manualTicketInput = document.getElementById('ticketInput').value.trim();
+
+      // Separate host:port from any query string the user may have pasted into the host box
+      const [hostPart, queryPart] = rawHostInput.split('?');
+      const cleanHost = hostPart.replace(/\/chat\/?$/, '').replace(/\/+$/, '');
+
+      let ticket = overrideTicket || manualTicketInput;
+      if (!ticket && queryPart) {
+        const params = new URLSearchParams(queryPart);
+        ticket = params.get('ticket') || '';
+      }
+
+      const wsUrl = ticket
+        ? `wss://${cleanHost}/chat?ticket=${encodeURIComponent(ticket)}`
+        : `wss://${cleanHost}/chat`;
+
+      return {
+        cleanHost,
+        ticketUrl: `https://${cleanHost}/api/ws-ticket`,
+        wsUrl
+      };
+    }
+
     // Helper function to open a WebSocket to the given URL and log all handshake/message events
     function openDiagnosticSocket(wsUrl) {
       if (testSocket) {
@@ -74,7 +106,7 @@
       writeLog(`Initiating cross-origin WebSocket from Origin "${window.location.origin}" -> ${wsUrl}`, 'info');
       testSocket = new WebSocket(wsUrl);
 
-      // Fired ONLY if the server accepts the cross-origin upgrade (Vulnerable Mode)
+      // Fired ONLY if the server accepts the cross-origin upgrade
       testSocket.onopen = () => {
         writeLog('HANDSHAKE ACCEPTED (101 Switching Protocols): Server accepted cross-origin connection.', 'ok');
       };
@@ -89,7 +121,7 @@
         }
       };
 
-      // Fired when the server rejects the handshake (e.g., 403 Forbidden due to Origin Validation or Missing Ticket)
+      // Fired when the server rejects the handshake (e.g., 403 Forbidden due to Origin Validation or Invalid/Used Ticket)
       testSocket.onerror = () => {
         writeLog('WebSocket error occurred during handshake.', 'err');
       };
@@ -100,19 +132,17 @@
       };
     }
 
-    // Button 1: Initiate a direct cross-origin WebSocket connection (relies on ambient cookies)
+    // Button 1: Initiate a cross-origin WebSocket connection (uses Optional Ticket UUID if entered, or Cookie Only if empty)
     document.getElementById('testWsBtn').addEventListener('click', () => {
-      const host = document.getElementById('targetHost').value.trim();
-      const wsUrl = `wss://${host}/chat`;
+      const { wsUrl } = buildTargetUrls();
       openDiagnosticSocket(wsUrl);
     });
 
     // Button 2: Test the One-Time Ticket Flow from an External Origin:
     // Step A: Try to fetch a ticket from POST /api/ws-ticket (Blocked by Browser Same-Origin Policy!)
-    // Step B: Try to connect to wss://.../chat without a valid ticket (Rejected by Server Ticket Check!)
+    // Step B: Try to connect to wss://.../chat (using any manual ticket entered or no ticket)
     document.getElementById('testTicketFlowBtn').addEventListener('click', async () => {
-      const host = document.getElementById('targetHost').value.trim();
-      const ticketUrl = `https://${host}/api/ws-ticket`;
+      const { ticketUrl } = buildTargetUrls();
       writeLog(`[Step 1/2] Attempting cross-origin POST ${ticketUrl} to obtain a One-Time Ticket...`, 'info');
 
       let obtainedTicket = null;
@@ -128,10 +158,8 @@
         writeLog(`[Step 1/2 Result] BLOCKED BY SAME-ORIGIN POLICY (CORS): External origin cannot read /api/ws-ticket response (${err.message}).`, 'ok');
       }
 
-      writeLog('[Step 2/2] Attempting WebSocket connection without a valid ticket...', 'info');
-      const wsUrl = obtainedTicket
-        ? `wss://${host}/chat?ticket=${encodeURIComponent(obtainedTicket)}`
-        : `wss://${host}/chat`;
+      const { wsUrl } = buildTargetUrls(obtainedTicket);
+      writeLog(`[Step 2/2] Attempting WebSocket connection -> ${wsUrl}`, 'info');
       openDiagnosticSocket(wsUrl);
     });
 
