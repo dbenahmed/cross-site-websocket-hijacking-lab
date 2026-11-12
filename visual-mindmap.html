@@ -160,7 +160,47 @@
 <body>
   <div class="container">
     <h1>Cross-Site WebSocket Hijacking (CSWSH) — Visual Architecture & Mindmap</h1>
-    <p class="subtitle">A complete visual guide to the problem, browser cookie vs. origin rules, edge cases, and our 3 server modes</p>
+    <p class="subtitle">A complete visual guide to the problem, browser cookie vs. origin rules, edge cases, and our server modes</p>
+
+    <!-- 0. CORE LIGHTBULB MOMENT -->
+    <div class="section-title">0. The Core Lightbulb Moment: Why HTTP Is Safe by Default While WebSockets Are Vulnerable by Default</div>
+    <div class="card" style="margin-bottom: 28px;">
+      <p style="margin-top: 0;">
+        In our server code (<code>app.get('/api/me')</code>), we wrote <strong>ZERO Origin checks</strong>. When the external page (<code>.132:5000</code>) calls <code>fetch('https://192.168.28.131:3000/api/me', { credentials: 'include' })</code>, the server <strong>DOES</strong> think it's Alice and <strong>DOES</strong> send back her data—yet <strong>Alice's browser throws the HTTP response in the trash automatically</strong> (<code>Blocked by CORS policy</code>)!<br/>
+        Why doesn't the browser do that for <code>new WebSocket()</code>? Because the WebSocket protocol (RFC 6455) does <strong>not</strong> enforce CORS in the browser—leaving it 100% up to the server developer!
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>If a Developer Writes ZERO Origin Code...</th>
+            <th>Normal HTTP (<code>fetch</code>)</th>
+            <th>WebSockets (<code>new WebSocket</code>)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Does the Attacker ever get the JWT token string?</strong></td>
+            <td><span class="badge badge-green">NO</span> (<code>document.cookie</code> is empty &amp; <code>HttpOnly</code>)</td>
+            <td><span class="badge badge-green">NO</span> (<code>document.cookie</code> is empty &amp; <code>HttpOnly</code>)</td>
+          </tr>
+          <tr>
+            <td><strong>Does the Server think it's the real user and respond?</strong></td>
+            <td><span class="badge badge-yellow">YES</span> (Server sees the cookie and responds)</td>
+            <td><span class="badge badge-yellow">YES</span> (Server sees the cookie and upgrades)</td>
+          </tr>
+          <tr>
+            <td><strong>What does the BROWSER do by default?</strong></td>
+            <td><span class="badge badge-green">BLOCKS IT AUTOMATICALLY!</span> (Throws response away unless <code>Access-Control-Allow-Origin</code> is present)</td>
+            <td><span class="badge badge-red">ALLOWS IT AUTOMATICALLY!</span> (Browser assumes the server checked <code>req.headers.origin</code>!)</td>
+          </tr>
+          <tr>
+            <td><strong>What does Node.js (<code>express</code> vs <code>ws</code>) do by default?</strong></td>
+            <td><span class="badge badge-green">Safe by default</span> (Sends no CORS headers unless you add them)</td>
+            <td><span class="badge badge-red">Vulnerable by default</span> (<code>ws</code> accepts all Origins unless you write <code>server.on('upgrade')</code> checks!)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
 
     <!-- 1. VISUAL MINDMAP TREE -->
     <div class="section-title">1. Visual Mindmap: How Everything Connects</div>

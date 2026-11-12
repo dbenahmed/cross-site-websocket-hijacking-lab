@@ -30,26 +30,54 @@ This guide is written so that **anyone visiting this repository for the first ti
 
 ---
 
-## 1. The Big Picture: What Is the Problem? (Explained Simply)
+## 1. The Big Picture: Why HTTP Is Safe by Default While WebSockets Are Vulnerable by Default!
 
-Modern web apps (live chats, financial dashboards, collaborative editors) use **WebSockets** (`ws://` or `wss://`) instead of normal HTTP requests (`fetch`) so the server can push live messages to the browser instantly.
+### 🚨 First: The Attacker NEVER Has the User's JWT Token!
+A common question is: *"If the attacker already has the user's token, why would they eavesdrop on WebSockets instead of just logging in or making HTTP requests?"*
 
-However, there is a dangerous gap between how browsers protect **normal HTTP requests (`fetch`)** and how browsers handle **WebSockets (`new WebSocket()`)**:
+**The answer: The attacker NEVER gets the JWT token, and CANNOT make HTTP requests!**
+- When Alice logs into the Chat Server (`https://192.168.28.131:3000`), her token is stored in an `HttpOnly: true` cookie locked to `.131:3000`.
+- When Alice opens the Attacker's page (`https://192.168.28.132:5000`) in Tab 2 on her own computer:
+  - If the Attacker checks `document.cookie` on `.132:5000`, it prints **`""` (EMPTY!)**. The Attacker never sees the JWT string and can never log in as Alice!
+  - So the Attacker's only option is to write JavaScript on `.132:5000` that tells **Alice's own browser** to send requests to `.131:3000` (where Alice's browser will attach her cookie automatically).
 
-1. **When a user logs into a website (e.g., `http://localhost:3000`):**
-   - The server creates a signed **JSON Web Token (JWT)** and stores it in the user's browser inside an `HttpOnly` cookie (`session_token`).
-   - Whenever the browser connects to `localhost:3000`, the browser **automatically attaches** that cookie.
-2. **What happens if the logged-in user opens another website in a second tab (e.g., `http://localhost:5000`)?**
-   - **Can the second tab read the cookie with `document.cookie`?**
-     ❌ **NO.** The cookie belongs to `localhost:3000` and is marked `HttpOnly`. The external page **never sees the JWT token string**.
-   - **Can the second tab steal private data using `fetch("http://localhost:3000/api/...")`?**
-     ❌ **NO.** Even if the browser attaches the cookie to the request, the browser's **Same-Origin Policy (SOP / CORS)** sees that the request came from `http://localhost:5000` (a different Origin) and **blocks the second tab from reading the response**.
-   - **What if the second tab opens `new WebSocket("ws://localhost:3000/chat")`?**
-     ⚠️ **YES — IT SUCCEEDS BY DEFAULT!**
-     Why? Because **the browser's Same-Origin Policy does NOT block WebSockets by default**, and standard WebSocket libraries (like Node.js `ws`) accept connections from **any Origin** out of the box!
-     - The victim's browser automatically attaches the victim's `session_token` cookie to the WebSocket handshake going to `localhost:3000`.
-     - The server checks the cookie, sees it belongs to the logged-in user, and opens a live two-way communication pipe directly to the second tab!
-     - Now the external page can **eavesdrop on live private messages** and **send messages pretending to be the victim**—all **without ever knowing the victim's password or JWT token!**
+---
+
+### 💡 Why Does the Browser Block HTTP `fetch()` Automatically, While Allowing `new WebSocket()`?
+
+Look at `app.get('/api/me')` in our own [`vm1-chat-server/server.js`](vm1-chat-server/server.js):
+```javascript
+app.get('/api/me', (req, res) => {
+  const user = getUserFromToken(req.cookies[config.COOKIE_NAME]);
+  res.json({ user, mode: defenseMode });
+});
+```
+Notice something? **We wrote ZERO Origin checks inside `app.get('/api/me')`!**
+
+Yet look at what happens when the Attacker's page (`.132:5000`) tries **HTTP `fetch('/api/me')`** vs. **`new WebSocket('/chat')`**:
+
+1. **In Normal HTTP (`fetch`) — "Secure by Default" (Browser Protects You Automatically!):**
+   - When `.132:5000` calls `fetch('https://192.168.28.131:3000/api/me', { credentials: 'include' })`, Alice's browser attaches her cookie, and **the server DOES think it's Alice and DOES send back Alice's JSON data!**
+   - **Why can't the Attacker read it?** Because when the HTTP response arrives at Alice's browser, **the BROWSER ITSELF throws the response in the trash!**
+   - The browser prints in red: `Blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present`.
+   - Unless the server developer explicitly added `Access-Control-Allow-Origin: https://192.168.28.132:5000`, **the browser blocks cross-origin HTTP reads automatically—even when the developer wrote zero Origin checks!**
+
+2. **In WebSockets (`new WebSocket`) — "Insecure by Default" (Neither the Browser Nor `ws` Protects You!):**
+   - When engineers designed the **WebSocket standard (RFC 6455)**, they decided:
+     > *"For WebSockets, **the browser will NOT block cross-origin connections** and will NOT check `Access-Control-Allow-Origin`! Instead, the browser will only attach the `Origin` header (`Origin: https://192.168.28.132:5000`) and leave it 100% up to the **backend server** to check it!"*
+   - AND then, backend WebSocket libraries (like `ws` in Node.js, `websockets` in Python, etc.) **also** did not check the `Origin` header by default!
+
+### Side-by-Side Comparison (The Core Message of This Project):
+
+| If a Developer Writes ZERO Origin Code... | Normal HTTP (`fetch`) | WebSockets (`new WebSocket`) |
+| :--- | :--- | :--- |
+| **Does the Attacker ever see the JWT token string?** | ❌ **No** (`document.cookie` is empty / `HttpOnly`) | ❌ **No** (`document.cookie` is empty / `HttpOnly`) |
+| **Does the server think it's the real user and respond?** | ✅ **Yes** (Server sees the attached cookie and responds) | ✅ **Yes** (Server sees the attached cookie and upgrades) |
+| **What does the BROWSER do by default?** | 🛡️ **BLOCKS IT AUTOMATICALLY!**<br/>(Throws the response away unless `Access-Control-Allow-Origin` is present) | 🚨 **ALLOWS IT AUTOMATICALLY!**<br/>(Browser assumes the server checked `req.headers.origin`!) |
+| **What does Node.js (`express` vs `ws`) do by default?** | 🛡️ **Safe by default** (Sends no CORS headers unless you add them) | 🚨 **Vulnerable by default** (`ws` accepts all Origins unless you write `server.on('upgrade')` checks!) |
+
+> **The 1-Sentence Takeaway:**
+> **In HTTP (`fetch`), if a developer does nothing, the browser BLOCKS cross-origin access by default. In WebSockets (`ws`), if a developer does nothing, both the browser and the server ALLOW cross-origin access by default—which is why developers must manually implement Origin Validation and One-Time Tickets!**
 
 ---
 

@@ -1,6 +1,24 @@
 # Visual Cheat-Sheet & Mindmap: Cookies, Origins, WebSockets & Defenses
 
-This file is designed so you can read it in 5 minutes before any presentation or exam and immediately remember **how everything works**, **all edge cases**, and **how our 3 modes are implemented in code**.
+This file is designed so you can read it in 5 minutes before any presentation or exam and immediately remember **how everything works**, **all edge cases**, and **how our modes are implemented in code**.
+
+---
+
+## 0. The Ultimate Takeaway: Why HTTP Is Blocked by Default While WebSockets Are Open by Default!
+
+Even when a developer writes **ZERO Origin checks** on an HTTP route (like `app.get('/api/me')` in `server.js`), if an external page calls `fetch('https://192.168.28.131:3000/api/me', { credentials: 'include' })`:
+1. The server **does** see the user's cookie, thinks it is the real user, and sends back the JSON response.
+2. **However, the BROWSER ITSELF intercepts the HTTP response and throws it in the trash** (`Blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present`)!
+
+Why doesn't the browser do that for `new WebSocket()`?
+Because the **WebSocket specification (RFC 6455)** decided that **browsers will NOT check `Access-Control-Allow-Origin` on WebSockets**—leaving it 100% up to the backend server to check `req.headers.origin`, while Node.js `ws` also accepts all Origins by default!
+
+| If a Developer Writes ZERO Origin Code... | Normal HTTP (`fetch`) | WebSockets (`new WebSocket`) |
+| :--- | :--- | :--- |
+| **Does the Attacker ever see the JWT token string?** | ❌ **No** (`document.cookie` is empty / `HttpOnly`) | ❌ **No** (`document.cookie` is empty / `HttpOnly`) |
+| **Does the server think it's the real user and respond?** | ✅ **Yes** (Server sees the cookie and responds) | ✅ **Yes** (Server sees the cookie and upgrades) |
+| **What does the BROWSER do by default?** | 🛡️ **BLOCKS IT AUTOMATICALLY!**<br/>(Throws response away unless `Access-Control-Allow-Origin` is set) | 🚨 **ALLOWS IT AUTOMATICALLY!**<br/>(Browser assumes the server checked `req.headers.origin`!) |
+| **What does Node.js (`express` vs `ws`) do by default?** | 🛡️ **Safe by default** (Sends no CORS headers unless you add them) | 🚨 **Vulnerable by default** (`ws` accepts all Origins unless you write `server.on('upgrade')` checks!) |
 
 ---
 
