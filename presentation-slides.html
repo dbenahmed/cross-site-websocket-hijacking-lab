@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>CSWSH & Real-Time Eavesdropping — Presentation Deck</title>
+  <style>
+    * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    body {
+      margin: 0;
+      padding: 0;
+      background: #090d16;
+      color: #f8fafc;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    /* Floating toolbar (hidden when printing to PDF) */
+    .toolbar {
+      position: fixed;
+      top: 14px;
+      right: 20px;
+      z-index: 9999;
+      display: flex;
+      gap: 10px;
+      background: rgba(15, 23, 42, 0.92);
+      border: 1px solid #334155;
+      padding: 8px 14px;
+      border-radius: 8px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+      align-items: center;
+    }
+    .toolbar button {
+      background: #2563eb;
+      color: white;
+      border: none;
+      padding: 7px 14px;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .toolbar button:hover { background: #1d4ed8; }
+    .toolbar span { font-size: 13px; color: #94a3b8; }
+
+    /* Widescreen 16:9 Slide Container */
+    .slide {
+      width: 1280px;
+      height: 720px;
+      margin: 28px auto;
+      background: linear-gradient(145deg, #0f172a 0%, #111827 100%);
+      border: 1px solid #1e293b;
+      border-radius: 14px;
+      padding: 46px 58px;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
+      overflow: hidden;
+    }
+
+    /* Top accent bar */
+    .slide::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 6px;
+      background: linear-gradient(90deg, #0284c7, #38bdf8, #22c55e);
+    }
+
+    .slide-header {
+      margin-bottom: 16px;
+    }
+    .slide-tag {
+      display: inline-block;
+      color: #38bdf8;
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      margin-bottom: 6px;
+    }
+    .slide h1 {
+      font-size: 40px;
+      line-height: 1.2;
+      margin: 0 0 12px 0;
+      color: #f8fafc;
+    }
+    .slide h2 {
+      font-size: 30px;
+      margin: 0;
+      color: #f8fafc;
+    }
+    .slide-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .slide-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-top: 1px solid #1e293b;
+      padding-top: 12px;
+      font-size: 13px;
+      color: #64748b;
+    }
+
+    /* Grid & Card Helpers */
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: stretch; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; align-items: stretch; }
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 20px 22px;
+    }
+    .card.red { border-top: 4px solid #ef4444; }
+    .card.green { border-top: 4px solid #22c55e; }
+    .card.blue { border-top: 4px solid #38bdf8; }
+    .card.yellow { border-top: 4px solid #eab308; }
+    .card h3 { margin: 0 0 10px 0; font-size: 19px; color: #f1f5f9; }
+    .card p, .card li { font-size: 15.5px; color: #cbd5e1; line-height: 1.5; }
+    .card ul { margin: 8px 0 0 0; padding-left: 20px; }
+    .card li { margin-bottom: 6px; }
+
+    /* Badges */
+    .badge {
+      display: inline-block;
+      padding: 3px 9px;
+      border-radius: 5px;
+      font-size: 12.5px;
+      font-weight: 700;
+    }
+    .b-red { background: #7f1d1d; color: #fca5a5; }
+    .b-green { background: #14532d; color: #86efac; }
+    .b-blue { background: #0c4a6e; color: #7dd3fc; }
+    .b-yellow { background: #713f12; color: #fde047; }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #1e293b;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    th, td {
+      border: 1px solid #334155;
+      padding: 13px 16px;
+      text-align: left;
+      font-size: 15px;
+    }
+    th { background: #0369a1; color: white; font-size: 15.5px; }
+    td { color: #e2e8f0; }
+
+    /* Code & Diagram Boxes */
+    pre {
+      background: #090d16;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 14px 18px;
+      color: #38bdf8;
+      font-family: "Consolas", "Courier New", monospace;
+      font-size: 14px;
+      line-height: 1.45;
+      margin: 10px 0;
+      overflow-x: auto;
+    }
+    code {
+      background: #090d16;
+      color: #38bdf8;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: "Consolas", "Courier New", monospace;
+      font-size: 14px;
+    }
+    .callout {
+      background: rgba(2, 132, 199, 0.15);
+      border-left: 5px solid #38bdf8;
+      padding: 14px 18px;
+      border-radius: 6px;
+      font-size: 16px;
+      color: #f1f5f9;
+      margin-top: 14px;
+    }
+    .callout.danger {
+      background: rgba(239, 68, 68, 0.14);
+      border-left-color: #ef4444;
+    }
+    .callout.success {
+      background: rgba(34, 197, 94, 0.14);
+      border-left-color: #22c55e;
+    }
+
+    /* Visual Sequence / Flow Diagrams */
+    .seq-box {
+      background: #0b1120;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 18px 22px;
+    }
+    .seq-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      font-size: 14.5px;
+    }
+    .seq-actor {
+      background: #1e293b;
+      border: 2px solid #38bdf8;
+      color: #f8fafc;
+      font-weight: 700;
+      padding: 8px 16px;
+      border-radius: 8px;
+      width: 240px;
+      text-align: center;
+      font-size: 14px;
+    }
+    .seq-actor.evil { border-color: #ef4444; color: #fca5a5; }
+    .seq-actor.server { border-color: #22c55e; color: #86efac; }
+    .seq-arrow {
+      flex: 1;
+      margin: 0 16px;
+      padding: 8px 14px;
+      background: #1e293b;
+      border-radius: 6px;
+      border-left: 4px solid #38bdf8;
+      color: #e2e8f0;
+      font-size: 13.5px;
+    }
+    .seq-arrow.danger { border-left-color: #ef4444; background: rgba(127, 29, 29, 0.3); }
+    .seq-arrow.safe { border-left-color: #22c55e; background: rgba(20, 83, 45, 0.3); }
+
+    /* Print-to-PDF exact 16:9 page rules */
+    @page {
+      size: 1280px 720px;
+      margin: 0;
+    }
+    @media print {
+      body { background: #0f172a; }
+      .toolbar { display: none !important; }
+      .slide {
+        margin: 0;
+        border: none;
+        border-radius: 0;
+        box-shadow: none;
+        page-break-after: always;
+        break-after: page;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Floating Save-as-PDF Toolbar -->
+  <div class="toolbar">
+    <span>10 Slides (16:9 Widescreen)</span>
+    <button onclick="window.print()">Save / Export as PDF (Ctrl + P)</button>
+  </div>
+
+  <!-- ================================================================= -->
+  <!-- SLIDE 1: TITLE & OVERVIEW                                         -->
+  <!-- ================================================================= -->
+  <section class="slide">
+    <div class="slide-header">
+      <div class="slide-tag">Cybersecurity Project Presentation</div>
+    </div>
+    <div class="slide-body">
+      <h1 style="font-size: 42px; margin-bottom: 14px;">
+        Cross-Site WebSocket Hijacking (CSWSH) &amp; Real-Time Eavesdropping
+      </h1>
+      <p style="font-size: 21px; color: #38bdf8; margin-top: 0; margin-bottom: 36px;">
+        Detection and Defense Using Strict Origin Validation &amp; Single-Use Ephemeral Tickets
+      </p>
+
+      <div class="grid-3">
+        <div class="card red">
+          <h3>1. The Vulnerability</h3>
+          <p>Standard browser protections like the <strong>Same-Origin Policy (SOP / CORS)</strong> do <u>not</u> block WebSocket connections by default, and raw backend libraries (Node.js <code>ws</code>) accept connections from any origin.</p>
+        </div>
+        <div class="card yellow">
+          <h3>2. The Real-Time Threat</h3>
+          <p>When an app relies on cookies for authentication, an external tab opened by the victim can silently hijack the bidirectional WebSocket stream—<strong>without ever stealing or knowing the victim's JWT token!</strong></p>
+        </div>
+        <div class="card green">
+          <h3>3. Our 2-Layer Defense</h3>
+          <p>We design and test a defense-in-depth architecture combining <strong>Strict Server-Side Origin Validation</strong> with a <strong>15-Second Single-Use Cryptographic Ticket</strong> protected by SOP.</p>
+        </div>
+      </div>
+    </div>
+    <div class="slide-footer">
+      <span>Cross-Site WebSocket Hijacking (CSWSH) Defense Lab</span>
+      <span>Slide 1 / 10</span>
+    </div>
+  </section>
+
+  <!-- ================================================================= -->
+  <!-- SLIDE 2: BACKGROUND — HOW WEBSOCKETS & COOKIE AUTH WORK           -->
+  <!-- ================================================================= -->
+  <section class="slide">
+    <div class="slide-header">
+      <div class="slide-tag">Background &amp; Architecture</div>
+      <h2>How WebSockets Start &amp; Why Developers Use Cookie Auth</h2>
+    </div>
+    <div class="slide-body">
+      <div class="grid-2">
+        <div class="card blue">
+          <h3>1. Every WebSocket Starts as an HTTP Request!</h3>
+          <ul>
+            <li>When browser JS calls <code>new WebSocket("wss://server/chat")</code>, the browser sends an <strong>HTTP <code>GET</code> request</strong> with the header <code>Upgrade: websocket</code>.</li>
+            <li>If accepted, the server replies with <code>101 Switching Protocols</code>, turning the connection into a persistent, 2-way real-time pipe.</li>
+          </ul>
+          <h3 style="margin-top: 18px;">2. Why Cookies Are Used Instead of Headers</h3>
+          <ul>
+            <li>Unlike <code>fetch(url, { headers: { Authorization } })</code>, the browser's <code>new WebSocket(url)</code> API <strong>has no <code>headers</code> option</strong>!</li>
+            <li>Because developers cannot pass custom <code>Authorization: Bearer</code> headers on WebSockets, they store the signed JWT inside an <code>HttpOnly</code> cookie—which the browser attaches automatically!</li>
+          </ul>
+        </div>
+
+        <div class="seq-box">
+          <h3 style="margin-top: 0; color: #38bdf8; font-size: 17px;">Normal Login &amp; WebSocket Handshake Flow</h3>
+          <div class="seq-row">
+            <div class="seq-actor">User Browser (Tab 1)</div>
+            <div class="seq-actor server">Chat Server (Port 3000)</div>
+          </div>
+          <div class="seq-row">
+            <div class="seq-arrow"><strong>1. POST /api/login</strong> (email, password) &rarr;</div>
+          </div>
+          <div class="seq-row">
+            <div class="seq-arrow safe">&larr; <strong>2. Set-Cookie:</strong> <code>session_token=&lt;JWT&gt;; HttpOnly</code></div>
+          </div>
+          <div class="seq-row">
+            <div class="seq-arrow"><strong>3. GET /chat (Upgrade: websocket)</strong><br/>Browser automatically attaches <code>Cookie: session_token=&lt;JWT&gt;</code> &rarr;</div>
+          </div>
+          <div class="seq-row">
+            <div class="seq-arrow safe">&larr; <strong>4. HTTP/1.1 101 Switching Protocols</strong><br/>Live bidirectional chat stream is now open!</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="slide-footer">
+      <span>Cross-Site WebSocket Hijacking (CSWSH) Defense Lab</span>
+      <span>Slide 2 / 10</span>
+    </div>
+  </section>
+
+  <!-- ================================================================= -->
+  <!-- SLIDE 3: THE LIGHTBULB MOMENT — HTTP VS WEBSOCKETS                -->
+  <!-- ================================================================= -->
+  <section class="slide">
+    <div class="slide-header">
+      <div class="slide-tag">The Core Root Cause</div>
+      <h2>Why HTTP (<code>fetch</code>) Is Safe by Default, While WebSockets Are Vulnerable!</h2>
+    </div>
+    <div class="slide-body">
+      <p style="font-size: 16.5px; color: #cbd5e1; margin-top: 0; margin-bottom: 16px;">
+        Suppose a developer writes <strong>ZERO Origin-checking code</strong> on the server. When an external page (<code>.132:5000</code>) tries to access the server (<code>.131:3000</code>), look at the opposite behavior between HTTP and WebSockets:
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>If a Developer Writes ZERO Origin Code...</th>
+            <th>Normal HTTP (<code>fetch('/api/me')</code>)</th>
+            <th>WebSockets (<code>new WebSocket('/chat')</code>)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>1. Does the Attacker ever see the JWT string?</strong></td>
+            <td><span class="badge b-green">NO</span> (<code>document.cookie</code> is empty &amp; <code>HttpOnly</code>)</td>
+            <td><span class="badge b-green">NO</span> (<code>document.cookie</code> is empty &amp; <code>HttpOnly</code>)</td>
+          </tr>
+          <tr>
+            <td><strong>2. Does the Server think it's the real user &amp; respond?</strong></td>
+            <td><span class="badge b-yellow">YES</span> (Server sees the attached cookie and responds)</td>
+            <td><span class="badge b-yellow">YES</span> (Server sees the attached cookie and upgrades)</td>
+          </tr>
+          <tr>
+            <td><strong>3. What does the BROWSER do by default?</strong></td>
+            <td><span class="badge b-green">BLOCKS IT AUTOMATICALLY!</span><br/>Browser throws the response in the trash (<code>Blocked by CORS</code>) unless <code>Access-Control-Allow-Origin</code> is present!</td>
+            <td><span class="badge b-red">ALLOWS IT AUTOMATICALLY!</span><br/>By RFC 6455 design, browsers do <u>not</u> enforce CORS on WebSockets—leaving it 100% up to the server!</td>
+          </tr>
+          <tr>
+            <td><strong>4. What does Node.js (<code>express</code> vs <code>ws</code>) do?</strong></td>
+            <td><span class="badge b-green">Safe by Default</span> (Sends no CORS headers)</td>
+            <td><span class="badge b-red">Vulnerable by Default</span> (<code>ws</code> accepts all Origins!)</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="callout">
+        <strong>The Core Takeaway:</strong> In HTTP (<code>fetch</code>), if a developer does nothing, the <strong>browser blocks cross-origin reads automatically</strong>. In WebSockets (<code>ws</code>), if a developer does nothing, <strong>both the browser and the server allow cross-origin access by default!</strong>
+      </div>
+    </div>
+    <div class="slide-footer">
+      <span>Cross-Site WebSocket Hijacking (CSWSH) Defense Lab</span>
+      <span>Slide 3 / 10</span>
+    </div>
+  </section>
+
+  <!-- ================================================================= -->
+  <!-- SLIDE 4: STEP-BY-STEP ANATOMY OF THE CSWSH ATTACK                 -->
+  <!-- ================================================================= -->
+  <section class="slide">
+    <div class="slide-header">
+      <div class="slide-tag">Threat Mechanics</div>
+      <h2>Anatomy of Cross-Site WebSocket Hijacking (Without Knowing the Token)</h2>
+    </div>
+    <div class="slide-body">
+      <div class="grid-2">
+        <div class="card red">
+          <h3>How the Hijack Works Step-by-Step</h3>
+          <ul>
+            <li><strong>Step 1:</strong> Victim (Alice) logs into the Chat App in <strong>Tab 1</strong> (<code>https://192.168.28.131:3000</code>).</li>
+            <li><strong>Step 2:</strong> Alice opens an external webpage in <strong>Tab 2</strong> (<code>https://192.168.28.132:5000</code>).</li>
+            <li><strong>Step 3:</strong> Tab 2 <u>never</u> sees Alice's JWT token (<code>document.cookie</code> is empty) and <u>cannot</u> use HTTP <code>fetch()</code> (blocked by CORS).</li>
+            <li><strong>Step 4:</strong> Tab 2 executes:<br/><code>new WebSocket("wss://192.168.28.131:3000/chat")</code></li>
+            <li><strong>Step 5:</strong> Alice's browser sees the destination is <code>.131:3000</code> and <strong>automatically attaches Alice's cookie</strong>!</li>
+            <li><strong>Step 6:</strong> The server checks the cookie, ignores <code>Origin</code>, and opens a live 2-way stream to Tab 2!</li>
+          </ul>
+        </div>
+
+        <div class="seq-box">
+          <h3 style="margin-top: 0; color: #f87171; font-size: 17px;">CSWSH Sequence in Vulnerable Mode</h3>
+          <div class="seq-row">
+            <div class="seq-actor evil">Tab 2: External Site (.132:5000)</div>
+            <div class="seq-actor server">Chat Server (.131:3000)</div>
+          </div>
+          <div class="seq-row">
+            <div class="seq-arrow"><strong>Attempt A:</strong> <code>fetch("https://.131:3000/api/me")</code> &rarr;<br/><span style="color:#86efac;">🛑 BLOCKED BY BROWSER CORS! (Response thrown away)</span></div>
+          </div>
+          <div class="seq-row">
+            <div class="seq-arrow danger"><strong>Attempt B:</strong> <code>new WebSocket("wss://.131:3000/chat")</code> &rarr;<br/>Browser attaches <code>Cookie: session_token=&lt;JWT&gt;</code><br/>and sets <code>Origin: https://192.168.28.132:5000</code></div>
+          </div>
+          <div class="seq-row">
+            <div class="seq-arrow danger">&larr; <strong>HTTP/1.1 101 Switching Protocols</strong><br/>Server verifies Cookie, ignores <code>Origin</code> header!</div>
+          </div>
+          <div class="seq-row">
+            <div class="seq-arrow danger">&larr; <strong>Live Stream Hijacked!</strong><br/>Tab 2 receives chat history &amp; live private messages in real time!</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="slide-footer">
+      <span>Cross-Site WebSocket Hijacking (CSWSH) Defense Lab</span>
+      <span>Slide 4 / 10</span>
+    </div>
+  </section>
+
+  <!-- ================================================================= -->
+  <!-- SLIDE 5: REAL-WORLD IMPACT — DOESN'T SAMESITE FIX THIS?           -->
+  <!-- ================================================================= -->
+  <section class="slide">
+    <div class="slide-header">
+      <div class="slide-tag">Real-World Scenarios &amp; Edge Cases</div>
+      <h2>"Wait — Doesn't <code>SameSite=Lax</code> or <code>Strict</code> Stop This?" (No!)</h2>
+    </div>
+    <div class="slide-body">
+      <div class="callout danger" style="margin-top: 0; margin-bottom: 18px;">
+        <strong>Critical Browser Rule: "Same-Site" &ne; "Same-Origin"!</strong><br/>
+        <code>SameSite</code> cookies only check the <strong>root domain</strong> (ignoring subdomains and ports!), while <code>Origin</code> checks the <strong>exact subdomain and port</strong>.
+      </div>
+
+      <div class="grid-3">
+        <div class="card red">
+          <h3>Case 1: Subdomains &amp; Ports<br/><span class="badge b-red">Fails Even With SameSite=Strict!</span></h3>
+          <p>In companies &amp; universities (<code>*.company.com</code> or <code>*.university.edu</code>):</p>
+          <ul>
+            <li><code>blog.university.edu</code> and <code>chat.university.edu</code> share <code>.university.edu</code> (<strong>Same-Site!</strong>).</li>
+            <li><code>fetch()</code> is blocked by SOP, <strong>but <code>SameSite=Strict</code> cookies ARE sent on WebSockets!</strong></li>
+          </ul>
+        </div>
+
+        <div class="card yellow">
+          <h3>Case 2: Cloud Apps &amp; Widgets<br/><span class="badge b-yellow">Forced to Use SameSite=None</span></h3>
+          <p>Many real-world apps cannot use <code>SameSite=Lax</code>:</p>
+          <ul>
+            <li><strong>Embedded Live-Chat Widgets</strong> (Intercom, Zendesk), Shopify/Slack plugins.</li>
+            <li><strong>Decoupled Cloud Deployments</strong> (Frontend on <code>vercel.app</code> + Backend on <code>onrender.com</code>).</li>
+          </ul>
+        </div>
+
+        <div class="card blue">
+          <h3>Case 3: Non-Cookie Auth<br/><span class="badge b-blue">SameSite Does Not Exist Here!</span></h3>
+          <p><code>SameSite</code> only applies to cookies:</p>
+          <ul>
+            <li><strong>Localhost Tools (<code>ws://localhost:port</code>):</strong> Local AI tools, Jupyter, crypto wallets.</li>
+            <li><strong>Corporate Networks:</strong> HTTP Basic Auth &amp; Windows Active Directory (<code>NTLM / Kerberos</code>) attach automatically!</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="slide-footer">
+      <span>Cross-Site WebSocket Hijacking (CSWSH) Defense Lab</span>
+      <span>Slide 5 / 10</span>
+    </div>
+  </section>
+
+  <!-- ================================================================= -->
+  <!-- SLIDE 6: 3-VM LAB ARCHITECTURE                                    -->
+  <!-- ================================================================= -->
+  <section class="slide">
+    <div class="slide-header">
+      <div class="slide-tag">Experimental Setup</div>
+      <h2>Our 3-VM Host-Only Network Architecture</h2>
+    </div>
+    <div class="slide-body">
+      <div class="grid-3" style="margin-bottom: 20px;">
+        <div class="card green">
+          <h3>VM 1: Messaging Server</h3>
+          <p><strong>IP:</strong> <code>https://192.168.28.131:3000</code></p>
+          <ul>
+            <li>Node.js + Express + native <code>ws</code></li>
+            <li>Issues <code>HttpOnly</code> JWT cookies</li>
+            <li>Runs Over HTTPS / WSS</li>
+            <li>4 Switchable Security Modes</li>
+          </ul>
+        </div>
+
+        <div class="card red">
+          <h3>VM 2: External Server</h3>
+          <p><strong>IP:</strong> <code>https://192.168.28.132:5000</code></p>
+          <ul>
+            <li>Separate Cross-Origin Server</li>
+            <li>Initiates background <code>new WebSocket("wss://.131:3000/chat")</code></li>
+            <li>Displays live handshake &amp; stream logs</li>
+          </ul>
+        </div>
+
+        <div class="card blue">
+          <h3>VM 3: Victim Client</h3>
+          <p><strong>Role:</strong> Authenticated User Browser</p>
+          <ul>
+            <li><strong>Tab 1:</strong> Logged in as Alice/Bob on VM 1 (<code>.131:3000</code>)</li>
+            <li><strong>Tab 2:</strong> Opens External Page on VM 2 (<code>.132:5000</code>)</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="callout">
+        <strong>Why HTTPS (`https://` &amp; `wss://`) Was Used Across the VMs:</strong><br/>
+        Because two raw IP addresses (<code>192.168.28.131</code> and <code>192.168.28.132</code>) have no shared domain name, browsers treat them as Cross-Site and require <code>SameSite=None; Secure</code> over HTTPS. Both servers auto-generate self-signed OpenSSL certificates on startup.
+      </div>
+    </div>
+    <div class="slide-footer">
+      <span>Cross-Site WebSocket Hijacking (CSWSH) Defense Lab</span>
+      <span>Slide 6 / 10</span>
+    </div>
+  </section>
+
+  <!-- ================================================================= -->
+  <!-- SLIDE 7: DEFENSE 1 — STRICT ORIGIN VALIDATION                     -->
+  <!-- ================================================================= -->
+  <section class="slide">
+    <div class="slide-header">
+      <div class="slide-tag">Defense Mechanism 1</div>
+      <h2>Strict Server-Side Origin Validation (<code>req.headers.origin</code>)</h2>
+    </div>
+    <div class="slide-body">
+      <div class="grid-2">
+        <div class="card green">
+          <h3>How Origin Enforcement Works</h3>
+          <ul>
+            <li>Every browser automatically attaches the HTTP <code>Origin</code> header to every WebSocket upgrade request (e.g., <code>Origin: https://192.168.28.132:5000</code>).</li>
+            <li>The <code>Origin</code> header is a <strong>forbidden header in browser JavaScript</strong>—scripts on the external page cannot fake, modify, or remove it!</li>
+            <li>Instead of letting <code>ws</code> accept upgrades automatically, we set <code>{ noServer: true }</code> and inspect every handshake inside <code>server.on('upgrade')</code>.</li>
+            <li>If <code>req.headers.origin</code> is not in <code>ALLOWED_ORIGINS</code>, we immediately return <code>HTTP/1.1 403 Forbidden</code> and destroy the raw socket!</li>
+          </ul>
+        </div>
+
+        <div>
+          <h3 style="margin-top: 0; color: #38bdf8; font-size: 17px;">Implementation in <code>vm1-chat-server/server.js</code>:</h3>
+          <pre>const wss = new WebSocketServer({ noServer: true });
+
+server.on('upgrade', (req, socket, head) => {
+  const origin = req.headers.origin;
+
+  // Defense 1: Check Origin against explicit allowlist
+  if (!origin || !config.ALLOWED_ORIGINS.includes(origin)) {
+    socket.write(
+      'HTTP/1.1 403 Forbidden: Untrusted Origin\r\n' +
+      'Connection: close\r\n\r\n'
+    );
+    socket.destroy();
+    return;
+  }
+
+  // Only reached if Origin is trusted!
+});</pre>
+        </div>
+      </div>
+    </div>
+    <div class="slide-footer">
+      <span>Cross-Site WebSocket Hijacking (CSWSH) Defense Lab</span>
+      <span>Slide 7 / 10</span>
+    </div>
+  </section>
+
+  <!-- ================================================================= -->
+  <!-- SLIDE 8: DEFENSE 2 — SINGLE-USE EPHEMERAL TICKETS                 -->
+  <!-- ================================================================= -->
+  <section class="slide">
+    <div class="slide-header">
+      <div class="slide-tag">Defense Mechanism 2</div>
+      <h2>Single-Use Ephemeral Ticket Pattern (15-Second TTL)</h2>
+    </div>
+    <div class="slide-body">
+      <div class="grid-2">
+        <div class="card green">
+          <h3>How the One-Time Ticket Works</h3>
+          <ul>
+            <li><strong>1. Ignore Cookies on WebSocket Upgrade:</strong> We completely remove ambient cookie authentication from <code>server.on('upgrade')</code>!</li>
+            <li><strong>2. Request Ticket via Standard HTTP (<code>POST /api/ws-ticket</code>):</strong> Before opening a WebSocket, the client calls <code>fetch('/api/ws-ticket', { method: 'POST' })</code> to receive a random 15-second UUID.</li>
+            <li><strong>3. Burn Immediately on First Use:</strong> When connecting to <code>wss://.../chat?ticket=&lt;uuid&gt;</code>, the server verifies the ticket and <strong>deletes it immediately (<code>tickets.delete(ticketId)</code>)</strong>!</li>
+          </ul>
+          <div class="callout success" style="font-size: 14.5px;">
+            <strong>Mathematical Proof — Why the Attacker Can NEVER Get a Ticket:</strong><br/>
+            • <strong>Cannot reuse victim's ticket:</strong> Deleted the instant the victim connects!<br/>
+            • <strong>Cannot fetch a new ticket:</strong> <code>POST /api/ws-ticket</code> is a normal HTTP request, so the <strong>Browser Same-Origin Policy (CORS)</strong> blocks the external page from reading the response!
+          </div>
+        </div>
+
+        <div>
+          <h3 style="margin-top: 0; color: #38bdf8; font-size: 17px;">Ticket Issue &amp; Single-Use Burn in <code>server.js</code>:</h3>
+          <pre>// Step 1: SOP-Protected HTTP Endpoint Issues 15s UUID
+app.post('/api/ws-ticket', (req, res) => {
+  const user = getUserFromToken(req.cookies.session_token);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+
+  const ticket = crypto.randomUUID();
+  tickets.set(ticket, { user, expiresAt: Date.now() + 15000 });
+  res.json({ ticket }); // Blocked by CORS for external origins!
+});
+
+// Step 2: WS Upgrade Verifies & Immediately Burns Ticket
+const ticketId = requestUrl.searchParams.get('ticket');
+const record = tickets.get(ticketId);
+if (ticketId) tickets.delete(ticketId); // Burned on 1st use!
+
+if (!record || Date.now() > record.expiresAt) {
+  return rejectUpgrade(socket, 403, 'Invalid or Expired Ticket');
+}</pre>
+        </div>
+      </div>
+    </div>
+    <div class="slide-footer">
+      <span>Cross-Site WebSocket Hijacking (CSWSH) Defense Lab</span>
+      <span>Slide 8 / 10</span>
+    </div>
+  </section>
+
+  <!-- ================================================================= -->
+  <!-- SLIDE 9: LIVE DEMONSTRATION MATRIX (4 MODES)                      -->
+  <!-- ================================================================= -->
+  <section class="slide">
+    <div class="slide-header">
+      <div class="slide-tag">Live Verification &amp; Results</div>
+      <h2>Live Demonstration Across the 4 Server Modes</h2>
+    </div>
+    <div class="slide-body">
+      <table>
+        <thead>
+          <tr>
+            <th>Server Mode</th>
+            <th>Handshake Checks Performed</th>
+            <th>Trusted Chat Tab (<code>.131:3000</code>)</th>
+            <th>External Origin Tab (<code>.132:5000</code>)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>1. Vulnerable</strong><br/><code>vulnerable</code></td>
+            <td>Checks <code>session_token</code> Cookie only.<br/>Ignores <code>Origin</code> header.</td>
+            <td><span class="badge b-green">101 Connected</span></td>
+            <td><span class="badge b-red">101 HIJACKED!</span><br/>Receives chat history &amp; live private messages!</td>
+          </tr>
+          <tr>
+            <td><strong>2. Origin Validation Only</strong><br/><code>origin</code></td>
+            <td>Verifies <code>req.headers.origin</code> is in <code>ALLOWED_ORIGINS</code> + Cookie.</td>
+            <td><span class="badge b-green">101 Connected</span></td>
+            <td><span class="badge b-green">403 BLOCKED!</span><br/><code>Forbidden: Untrusted Origin</code></td>
+          </tr>
+          <tr>
+            <td><strong>3. One-Time Ticket Only</strong><br/><code>ticket</code></td>
+            <td>Ignores Cookies on WS! Requires valid, unused 15s <code>?ticket=&lt;uuid&gt;</code>.</td>
+            <td><span class="badge b-green">101 Connected</span><br/>(Fetches ticket via SOP)</td>
+            <td><span class="badge b-green">403 BLOCKED!</span><br/><code>Forbidden: Invalid or Expired Ticket</code></td>
+          </tr>
+          <tr>
+            <td><strong>4. Both (Defense-in-Depth)</strong><br/><code>both</code></td>
+            <td>Enforces <strong>Origin Allowlist</strong> AND <strong>15s Single-Use Ticket</strong> together.</td>
+            <td><span class="badge b-green">101 Connected</span></td>
+            <td><span class="badge b-green">403 BLOCKED BY BOTH LAYERS!</span><br/>Protects even if a proxy rewrites <code>Origin</code>.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="callout success" style="margin-top: 20px;">
+        <strong>Why Mode 4 Combines Both Defenses:</strong> If a reverse proxy (e.g. Nginx or AWS Load Balancer) is ever misconfigured to overwrite the <code>Origin</code> header, the <strong>One-Time Ticket</strong> still stops the attack!
+      </div>
+    </div>
+    <div class="slide-footer">
+      <span>Cross-Site WebSocket Hijacking (CSWSH) Defense Lab</span>
+      <span>Slide 9 / 10</span>
+    </div>
+  </section>
+
+  <!-- ================================================================= -->
+  <!-- SLIDE 10: CONCLUSION & KEY TAKEAWAYS                              -->
+  <!-- ================================================================= -->
+  <section class="slide">
+    <div class="slide-header">
+      <div class="slide-tag">Summary &amp; Q&amp;A</div>
+      <h2>Conclusion &amp; Key Security Takeaways</h2>
+    </div>
+    <div class="slide-body">
+      <div class="grid-3" style="margin-bottom: 24px;">
+        <div class="card blue">
+          <h3>1. Browser CORS Does Not Protect WebSockets</h3>
+          <p>In HTTP (<code>fetch</code>), the browser blocks cross-origin reads automatically. In WebSockets (<code>ws</code>), both the browser and Node.js <code>ws</code> allow cross-origin connections unless you manually guard <code>server.on('upgrade')</code>.</p>
+        </div>
+
+        <div class="card yellow">
+          <h3>2. Cookie <code>SameSite</code> Is Not Enough</h3>
+          <p>Because <code>SameSite</code> ignores subdomains and ports (and doesn't apply to cloud <code>SameSite=None</code> apps, <code>localhost</code> tools, or corporate Basic/Windows Auth), relying on cookies alone leaves WebSockets exposed.</p>
+        </div>
+
+        <div class="card green">
+          <h3>3. Origin Validation + One-Time Tickets</h3>
+          <p>Validating <code>req.headers.origin</code> blocks untrusted origins at the door, and requiring a 15-second single-use ticket from a SOP-protected HTTP endpoint brings full Same-Origin Policy security to WebSockets.</p>
+        </div>
+      </div>
+
+      <div class="card" style="text-align: center; padding: 24px;">
+        <h2 style="color: #38bdf8; margin-bottom: 6px;">Thank You! — Questions &amp; Live Demo</h2>
+        <p style="margin: 0; font-size: 16px; color: #94a3b8;">
+          Live Demonstration: <code>VM 1 (Chat Server :3000)</code> &bull; <code>VM 2 (External Origin :5000)</code> &bull; <code>VM 3 (Client Browser)</code>
+        </p>
+      </div>
+    </div>
+    <div class="slide-footer">
+      <span>Cross-Site WebSocket Hijacking (CSWSH) Defense Lab</span>
+      <span>Slide 10 / 10</span>
+    </div>
+  </section>
+
+</body>
+</html>
